@@ -83,7 +83,7 @@ pub fn register_listing_table<T: ListingTableLike>() {
 }
 
 /// Attempt to cast the given TableProvider into a [`ListingTableLike`].
-/// If the table's type has not been registered using `register_listing_table`, will return `None`.
+/// If the table's type has not been registered using [`register_listing_table`], will return `None`.
 pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTableLike> {
     TABLE_TYPE_REGISTRY.cast_to_listing_table(table)
 }
