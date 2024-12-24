@@ -41,11 +41,12 @@ use datafusion::{
 use datafusion_expr::LogicalPlan;
 use itertools::Itertools;
 
-const META_COLUMN: &str = "__meta";
+/// The identifier of the column that [`RowMetadataSource`](row_metadata::RowMetadataSource) implementations should store row metadata in.
+pub const META_COLUMN: &str = "__meta";
 
 static TABLE_TYPE_REGISTRY: LazyLock<TableTypeRegistry> = LazyLock::new(TableTypeRegistry::default);
 
-/// A TableProvider whose data is backed by Hive-partitioned files in object storage.
+/// A [`TableProvider`] whose data is backed by Hive-partitioned files in object storage.
 pub trait ListingTableLike: TableProvider + 'static {
     /// Object store URLs for this table
     fn table_paths(&self) -> Vec<ListingTableUrl>;
