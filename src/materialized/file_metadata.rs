@@ -46,18 +46,16 @@ use object_store::{ObjectMeta, ObjectStore};
 use std::any::Any;
 use std::sync::Arc;
 
+use crate::materialized::cast_to_listing_table;
 use crate::materialized::{hive_partition::hive_partition, META_COLUMN};
 
 use super::row_metadata::RowMetadataSource;
-use super::TableTypeRegistry;
 
 /// A virtual file metadata table, inspired by the information schema column table.
 #[derive(Debug, Clone)]
 pub struct FileMetadata {
     table_schema: SchemaRef,
     catalog_list: Arc<dyn CatalogProviderList>,
-
-    registry: Arc<TableTypeRegistry>,
 }
 
 impl FileMetadata {
@@ -74,16 +72,7 @@ impl FileMetadata {
                 Field::new("size", DataType::UInt64, false),
             ])),
             catalog_list,
-
-            registry: Default::default(),
         }
-    }
-
-    /// Add a [`TableTypeRegistry`] to this [`FileMetadata`] table provider.
-    /// Any custom implementations of [`ListingTableLike`](super::ListingTableLike) should be registered
-    /// in the provided [`TableTypeRegistry`].
-    pub fn with_table_type_registry(self, registry: Arc<TableTypeRegistry>) -> Self {
-        Self { registry, ..self }
     }
 }
 
@@ -124,7 +113,6 @@ impl TableProvider for FileMetadata {
             filters,
             limit,
             self.catalog_list.clone(),
-            Arc::clone(&self.registry),
         )?;
 
         Ok(Arc::new(exec))
@@ -157,9 +145,7 @@ impl RowMetadataSource for FileMetadata {
         use datafusion::prelude::*;
 
         // Check that the remaining columns in the source table scans are indeed partition columns
-        let partition_cols = self
-            .registry
-            .cast_to_listing_table(source_as_provider(&scan.source)?.as_ref())
+        let partition_cols = cast_to_listing_table(source_as_provider(&scan.source)?.as_ref())
             .ok_or_else(|| {
                 DataFusionError::Internal(format!(
                     "Table '{}' was not registered in TableTypeRegistry",
@@ -222,7 +208,6 @@ pub struct FileMetadataExec {
     limit: Option<usize>,
     metrics: ExecutionPlanMetricsSet,
     catalog_list: Arc<dyn CatalogProviderList>,
-    table_type_registry: Arc<TableTypeRegistry>,
 }
 
 impl FileMetadataExec {
@@ -232,7 +217,6 @@ impl FileMetadataExec {
         filters: Vec<Arc<dyn PhysicalExpr>>,
         limit: Option<usize>,
         catalog_list: Arc<dyn CatalogProviderList>,
-        table_type_registry: Arc<TableTypeRegistry>,
     ) -> Result<Self> {
         let projected_schema = match projection.as_ref() {
             Some(projection) => Arc::new(table_schema.project(projection)?),
@@ -251,7 +235,6 @@ impl FileMetadataExec {
             limit,
             metrics: ExecutionPlanMetricsSet::new(),
             catalog_list,
-            table_type_registry,
         };
 
         Ok(exec)
@@ -404,7 +387,6 @@ impl FileMetadataExec {
 
         let table_schema = self.table_schema.clone();
         let catalog_list = self.catalog_list.clone();
-        let table_type_registry = Arc::clone(&self.table_type_registry);
 
         let record_batch = async move {
             // If we cannot determine the catalog, build from the entire catalog list.
@@ -416,7 +398,6 @@ impl FileMetadataExec {
                         catalog_list,
                         table_schema,
                         context,
-                        table_type_registry,
                     )
                     .await;
                 }
@@ -441,7 +422,6 @@ impl FileMetadataExec {
                         catalog_provider,
                         table_schema,
                         context,
-                        table_type_registry,
                     )
                     .await;
                 }
@@ -469,7 +449,6 @@ impl FileMetadataExec {
                         schema_provider,
                         table_schema,
                         context,
-                        table_type_registry,
                     )
                     .await;
                 }
@@ -493,7 +472,6 @@ impl FileMetadataExec {
                 table_provider,
                 table_schema,
                 context,
-                table_type_registry,
             )
             .await?;
 
@@ -563,7 +541,6 @@ impl FileMetadataBuilder {
         catalog_list: Arc<dyn CatalogProviderList>,
         schema: SchemaRef,
         context: Arc<TaskContext>,
-        table_type_registry: Arc<TableTypeRegistry>,
     ) -> Result<Vec<RecordBatch>> {
         let mut tasks = vec![];
 
@@ -574,17 +551,9 @@ impl FileMetadataBuilder {
             };
             let schema = schema.clone();
             let context = context.clone();
-            let table_type_registry = Arc::clone(&table_type_registry);
 
             tasks.push(async move {
-                Self::build_from_catalog(
-                    &catalog_name,
-                    catalog_provider,
-                    schema,
-                    context,
-                    table_type_registry,
-                )
-                .await
+                Self::build_from_catalog(&catalog_name, catalog_provider, schema, context).await
             });
         }
 
@@ -605,7 +574,6 @@ impl FileMetadataBuilder {
         catalog_provider: Arc<dyn CatalogProvider>,
         schema: SchemaRef,
         context: Arc<TaskContext>,
-        table_type_registry: Arc<TableTypeRegistry>,
     ) -> Result<Vec<RecordBatch>> {
         let mut tasks = vec![];
 
@@ -616,7 +584,6 @@ impl FileMetadataBuilder {
             };
             let schema = schema.clone();
             let context = context.clone();
-            let table_type_registry = Arc::clone(&table_type_registry);
 
             tasks.push(async move {
                 Self::build_from_schema(
@@ -625,7 +592,6 @@ impl FileMetadataBuilder {
                     schema_provider,
                     schema,
                     context,
-                    table_type_registry,
                 )
                 .await
             });
@@ -649,7 +615,6 @@ impl FileMetadataBuilder {
         schema_provider: Arc<dyn SchemaProvider>,
         schema: SchemaRef,
         context: Arc<TaskContext>,
-        table_type_registry: Arc<TableTypeRegistry>,
     ) -> Result<Vec<RecordBatch>> {
         let mut tasks = vec![];
 
@@ -660,7 +625,6 @@ impl FileMetadataBuilder {
             };
             let schema = schema.clone();
             let context = context.clone();
-            let table_type_registry = Arc::clone(&table_type_registry);
 
             tasks.push(async move {
                 Self::build_from_table(
@@ -670,7 +634,6 @@ impl FileMetadataBuilder {
                     table_provider,
                     schema,
                     context,
-                    table_type_registry,
                 )
                 .await
             })
@@ -694,15 +657,13 @@ impl FileMetadataBuilder {
         table_provider: Arc<dyn TableProvider>,
         schema: SchemaRef,
         context: Arc<TaskContext>,
-        table_type_registry: Arc<TableTypeRegistry>,
     ) -> Result<Option<RecordBatch>> {
         let mut builder = Self::new(schema.clone());
 
-        let listing_table_like =
-            match table_type_registry.cast_to_listing_table(table_provider.as_ref()) {
-                None => return Ok(None),
-                Some(t) => t,
-            };
+        let listing_table_like = match cast_to_listing_table(table_provider.as_ref()) {
+            None => return Ok(None),
+            Some(t) => t,
+        };
 
         let table_paths = listing_table_like.table_paths();
         let file_extension = listing_table_like.file_ext();

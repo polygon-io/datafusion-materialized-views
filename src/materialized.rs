@@ -15,20 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{
-    any::{type_name, Any, TypeId},
-    fmt::Debug,
-    sync::Arc,
-};
-
-use dashmap::DashMap;
-use datafusion::{
-    catalog::TableProvider,
-    datasource::listing::{ListingTable, ListingTableUrl},
-};
-use datafusion_expr::LogicalPlan;
-use itertools::Itertools;
-
 /// Track dependencies of materialized data in object storage
 mod dependencies;
 
@@ -41,7 +27,23 @@ pub mod file_metadata;
 /// A UDF that parses Hive partition elements from object storage paths.
 mod hive_partition;
 
+use std::{
+    any::{type_name, Any, TypeId},
+    fmt::Debug,
+    sync::{Arc, LazyLock},
+};
+
+use dashmap::DashMap;
+use datafusion::{
+    catalog::TableProvider,
+    datasource::listing::{ListingTable, ListingTableUrl},
+};
+use datafusion_expr::LogicalPlan;
+use itertools::Itertools;
+
 const META_COLUMN: &str = "__meta";
+
+static TABLE_TYPE_REGISTRY: LazyLock<TableTypeRegistry> = LazyLock::new(TableTypeRegistry::default);
 
 /// A TableProvider whose data is backed by Hive-partitioned files in object storage.
 pub trait ListingTableLike: TableProvider + 'static {
@@ -73,6 +75,19 @@ impl ListingTableLike for ListingTable {
     }
 }
 
+/// Register a [`ListingTableLike`] implementation in this registry.
+/// This allows `cast_to_listing_table` to easily downcast a [`TableProvider`]
+/// into a [`ListingTableLike`] where possible.
+pub fn register_listing_table<T: ListingTableLike>() {
+    TABLE_TYPE_REGISTRY.register_listing_table::<T>();
+}
+
+/// Attempt to cast the given TableProvider into a [`ListingTableLike`].
+/// If the table's type has not been registered using `register_listing_table`, will return `None`.
+pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTableLike> {
+    TABLE_TYPE_REGISTRY.cast_to_listing_table(table)
+}
+
 /// A hive-partitioned table in object storage that is defined by a user-provided query.
 pub trait Materialized: ListingTableLike {
     /// The query that defines this materialized view.
@@ -83,7 +98,10 @@ type Downcaster<T> = Arc<dyn Fn(&dyn Any) -> Option<&T> + Send + Sync>;
 
 /// A registry for implementations of [`ListingTableLike`], used for downcasting
 /// arbitrary TableProviders into `dyn ListingTableLike` where possible.
-pub struct TableTypeRegistry {
+///
+/// This is used throughout the crate as a singleton to store all known implementations of `ListingTableLike`.
+/// By default, [`ListingTable`] is registered.
+struct TableTypeRegistry {
     listing_table_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn ListingTableLike>)>,
 }
 
@@ -114,26 +132,17 @@ impl Default for TableTypeRegistry {
 }
 
 impl TableTypeRegistry {
-    /// Register a [`ListingTableLike`] implementation in this registry.
-    /// This allows users of [`TableTypeRegistry`] to easily downcast a [`TableProvider`]
-    /// into a [`ListingTableLike`] where possible.
-    ///
-    /// Returns `true` if `T` was already registered.
-    pub fn register_listing_table<T: ListingTableLike>(&self) -> bool {
-        self.listing_table_accessors
-            .insert(
-                TypeId::of::<T>(),
-                (
-                    type_name::<T>(),
-                    Arc::new(|any| any.downcast_ref::<T>().map(|t| t as &dyn ListingTableLike)),
-                ),
-            )
-            .is_some()
+    fn register_listing_table<T: ListingTableLike>(&self) {
+        self.listing_table_accessors.insert(
+            TypeId::of::<T>(),
+            (
+                type_name::<T>(),
+                Arc::new(|any| any.downcast_ref::<T>().map(|t| t as &dyn ListingTableLike)),
+            ),
+        );
     }
 
-    /// Attempt to cast the given TableProvider into a [`ListingTableLike`].
-    /// If the table's type has not been registered, will return `None`.
-    pub fn cast_to_listing_table<'a>(
+    fn cast_to_listing_table<'a>(
         &'a self,
         table: &'a dyn TableProvider,
     ) -> Option<&'a dyn ListingTableLike> {

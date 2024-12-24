@@ -24,6 +24,12 @@
 /// An example of a Hive-partitioned table is the [`ListingTable`](datafusion::datasource::listing::ListingTable).
 /// By analyzing the fragment of the materialized view query pertaining to the partition columns,
 /// we can derive a build graph that relates the files of a materialized views and the files of the tables it depends on.
+///
+/// A central trait is defined for Hive-partitioned tables, [`ListingTableLike`](materialized::ListingTableLike). Note that
+/// all implementations of [`ListingTableLike`](materialized::ListingTableLike) must be registered using the
+/// [`register_listing_table`](materialized::register_listing_table) function, otherwise the tables may not be detected by
+/// the incremental view maintenance code, including components such as [`FileMetadata`](materialized::file_metadata::FileMetadata)
+/// or [`RowMetadataRegistry`](materialized::row_metadata::RowMetadataRegistry).
 pub mod materialized;
 
 /// An implementation of Query Rewriting, an optimization that rewrites queries to make use of materialized views.
