@@ -14,9 +14,3 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-
-/// Code for incremental view maintenance.
-pub mod materialized;
-
-/// An implementation of Query Rewriting, an optimization that rewrites queries to make use of materialized views.
-mod rewrite;
