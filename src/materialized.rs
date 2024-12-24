@@ -75,6 +75,7 @@ impl ListingTableLike for ListingTable {
 
 /// A hive-partitioned table in object storage that is defined by a user-provided query.
 pub trait Materialized: ListingTableLike {
+    /// The query that defines this materialized view.
     fn query(&self) -> LogicalPlan;
 }
 

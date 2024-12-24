@@ -40,6 +40,7 @@ impl RowMetadataRegistry {
         self.metadata_sources.insert(table.to_string(), source)
     }
 
+    /// Retrieves the registered [`RowMetadataSource`] for a specific table.
     pub fn get_source(&self, table: &ResolvedTableReference) -> Result<Arc<dyn RowMetadataSource>> {
         self.metadata_sources
             .get(&table.to_string())
@@ -51,7 +52,7 @@ impl RowMetadataRegistry {
 /// A source for "row metadata", that associates rows from a table with
 /// metadata used for incremental view maintenance.
 ///
-/// Most use cases should default to using [`FileMetadata`] for their [`RowMetadataSource`],
+/// Most use cases should default to using [`FileMetadata`](super::file_metadata::FileMetadata) for their [`RowMetadataSource`],
 /// which uses object store metadata to perform incremental view maintenance on Hive-partitioned tables.
 /// However, in some use cases it is necessary to track metadata at a more granular level than Hive partitions.
 /// In such cases, users may implement a custom [`RowMetadataSource`] containing this metadata.

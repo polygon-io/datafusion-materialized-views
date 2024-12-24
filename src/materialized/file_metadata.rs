@@ -61,6 +61,8 @@ pub struct FileMetadata {
 }
 
 impl FileMetadata {
+    /// Construct a new [`FileMetadata`] table provider that lists files for all
+    /// tables in the provided catalog list.
     pub fn new(catalog_list: Arc<dyn CatalogProviderList>) -> Self {
         Self {
             table_schema: Arc::new(Schema::new(vec![
@@ -77,6 +79,9 @@ impl FileMetadata {
         }
     }
 
+    /// Add a [`TableTypeRegistry`] to this [`FileMetadata`] table provider.
+    /// Any custom implementations of [`ListingTableLike`](super::ListingTableLike) should be registered
+    /// in the provided [`TableTypeRegistry`].
     pub fn with_table_type_registry(self, registry: Arc<TableTypeRegistry>) -> Self {
         Self { registry, ..self }
     }
@@ -208,6 +213,7 @@ impl RowMetadataSource for FileMetadata {
     }
 }
 
+/// An [`ExecutionPlan`] that scans object store metadata.
 pub struct FileMetadataExec {
     table_schema: SchemaRef,
     plan_properties: PlanProperties,
