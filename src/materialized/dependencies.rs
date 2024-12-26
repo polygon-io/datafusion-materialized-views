@@ -50,7 +50,7 @@ use super::{cast_to_materialized, row_metadata::RowMetadataRegistry, util, Mater
 /// # Example
 ///
 /// ```sql
-/// SELECT * FROM file_dependencies('datafusion.public.t1');
+/// SELECT * FROM file_dependencies('datafusion.public.m1');
 ///
 /// +--------------------------------+----------------------+---------------------+-------------------+--------------------------------------+----------------------+
 /// | target                         | source_table_catalog | source_table_schema | source_table_name | source_uri                           | source_last_modified |
