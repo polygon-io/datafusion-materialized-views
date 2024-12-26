@@ -81,7 +81,7 @@ impl ListingTableLike for ListingTable {
 
 /// Register a [`ListingTableLike`] implementation in this registry.
 /// This allows `cast_to_listing_table` to easily downcast a [`TableProvider`]
-/// into a [`ListingTableLike`] where possible.
+/// into a `ListingTableLike` where possible.
 pub fn register_listing_table<T: ListingTableLike>() {
     TABLE_TYPE_REGISTRY.register_listing_table::<T>();
 }
@@ -100,7 +100,7 @@ pub trait Materialized: ListingTableLike {
 
 /// Register a [`Materialized`] implementation in this registry.
 /// This allows `cast_to_materialized` to easily downcast a [`TableProvider`]
-/// into a [`Materialized`] where possible.
+/// into a `Materialized` where possible.
 ///
 /// Note that this will also register `T` as a [`ListingTableLike`].
 pub fn register_materialized<T: Materialized>() {
@@ -115,11 +115,11 @@ pub fn cast_to_materialized(table: &dyn TableProvider) -> Option<&dyn Materializ
 
 type Downcaster<T> = Arc<dyn Fn(&dyn Any) -> Option<&T> + Send + Sync>;
 
-/// A registry for implementations of [`ListingTableLike`], used for downcasting
-/// arbitrary TableProviders into `dyn ListingTableLike` where possible.
+/// A registry for implementations of library-defined traits, used for downcasting
+/// arbitrary TableProviders into `ListingTableLike` and `Materialized` trait objects where possible.
 ///
-/// This is used throughout the crate as a singleton to store all known implementations of `ListingTableLike`.
-/// By default, [`ListingTable`] is registered.
+/// This is used throughout the crate as a singleton to store all known implementations of `ListingTableLike` and `Materialized`.
+/// By default, [`ListingTable`] is registered as a `ListingTableLike`.
 struct TableTypeRegistry {
     listing_table_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn ListingTableLike>)>,
     materialized_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn Materialized>)>,

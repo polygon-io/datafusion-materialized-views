@@ -38,7 +38,28 @@ use crate::materialized::META_COLUMN;
 
 use super::{cast_to_materialized, row_metadata::RowMetadataRegistry, util, Materialized};
 
-/// Table function that shows build targets and dependencies for a materialized view.
+/// A table function that shows build targets and dependencies for a materialized view:
+///
+/// ```ignore
+/// fn file_dependencies(table_ref: Utf8) -> Table
+/// ```
+///
+/// `table_ref` should point to a table provider registered for the current session
+/// that implements [`Materialized`]. Otherwise the function will throw an error.
+///
+/// # Example
+///
+/// ```sql
+/// SELECT * FROM file_dependencies('datafusion.public.t1');
+///
+/// +--------------------------------+----------------------+---------------------+-------------------+--------------------------------------+----------------------+
+/// | target                         | source_table_catalog | source_table_schema | source_table_name | source_uri                           | source_last_modified |
+/// +--------------------------------+----------------------+---------------------+-------------------+--------------------------------------+----------------------+
+/// | s3://m1/partition_column=2021/ | datafusion           | public              | t1                | s3://t1/column1=2021/data.01.parquet | 2023-07-11T16:29:26  |
+/// | s3://m1/partition_column=2022/ | datafusion           | public              | t1                | s3://t1/column1=2022/data.01.parquet | 2023-07-11T16:45:22  |
+/// | s3://m1/partition_column=2023/ | datafusion           | public              | t1                | s3://t1/column1=2023/data.01.parquet | 2023-07-11T16:45:44  |
+/// +--------------------------------+----------------------+---------------------+-------------------+--------------------------------------+----------------------+
+/// ```
 pub fn file_dependencies(
     catalog_list: Arc<dyn CatalogProviderList>,
     row_metadata_registry: Arc<RowMetadataRegistry>,
@@ -89,11 +110,7 @@ impl TableFunctionImpl for FileDependenciesUdtf {
         ))?;
 
         Ok(Arc::new(ViewTable::try_new(
-            expected_source_files_by_target(
-                mv,
-                &self.config_options,
-                self.row_metadata_registry.clone(),
-            )?,
+            file_dependencies_plan(mv, self.row_metadata_registry.clone(), &self.config_options)?,
             None,
         )?))
     }
@@ -109,12 +126,12 @@ fn get_table_name(args: &[Expr]) -> Result<&String> {
     }
 }
 
-/// List expected target partitions for this materialized view,
-/// together with the dependencies for each partition.
-pub fn expected_source_files_by_target(
+/// Returns a logical plan that, when executed, lists expected build targets
+/// for this materialized view, together with the dependencies for each target.
+pub fn file_dependencies_plan(
     materialized_view: &dyn Materialized,
-    config_options: &ConfigOptions,
     row_metadata_registry: Arc<RowMetadataRegistry>,
+    config_options: &ConfigOptions,
 ) -> Result<LogicalPlan> {
     use datafusion_expr::logical_plan::*;
 

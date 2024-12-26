@@ -70,7 +70,7 @@ impl RowMetadataRegistry {
 /// A source for "row metadata", that associates rows from a table with
 /// metadata used for incremental view maintenance.
 ///
-/// Most use cases should default to using [`FileMetadata`](super::file_metadata::FileMetadata) for their [`RowMetadataSource`],
+/// Most use cases should default to using [`FileMetadata`] for their [`RowMetadataSource`],
 /// which uses object store metadata to perform incremental view maintenance on Hive-partitioned tables.
 /// However, in some use cases it is necessary to track metadata at a more granular level than Hive partitions.
 /// In such cases, users may implement a custom [`RowMetadataSource`] containing this metadata.
@@ -109,7 +109,7 @@ pub trait RowMetadataSource: Send + Sync {
 /// partition columns and timestamp metadata.
 ///
 /// Object store metadata by default comes from [`FileMetadata`], but
-/// may be overrided with a custom [`TableSource`] using
+/// may be overrided with a custom [`TableProvider`] using
 /// [`Self::with_file_metadata`].
 #[derive(Debug, Clone)]
 pub struct ObjectStoreRowMetadataSource {
