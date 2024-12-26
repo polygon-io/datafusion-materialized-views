@@ -109,7 +109,7 @@ pub trait RowMetadataSource: Send + Sync {
 /// partition columns and timestamp metadata.
 ///
 /// Object store metadata by default comes from [`FileMetadata`], but
-/// may be overrided with a custom [`TableProvider`] using
+/// may be overridden with a custom [`TableProvider`] using
 /// [`Self::with_file_metadata`].
 #[derive(Debug, Clone)]
 pub struct ObjectStoreRowMetadataSource {
