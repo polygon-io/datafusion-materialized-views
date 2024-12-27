@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use datafusion::catalog::SchemaProvider;
 use datafusion::catalog::{CatalogProvider, Session};
 use datafusion::datasource::listing::ListingTableUrl;
-use datafusion::datasource::{provider_as_source, TableProvider};
+use datafusion::datasource::TableProvider;
 use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::physical_expr::{create_physical_expr, EquivalenceProperties};
 use datafusion::physical_plan::expressions::{BinaryExpr, Column, Literal};
@@ -47,9 +47,6 @@ use std::any::Any;
 use std::sync::Arc;
 
 use crate::materialized::cast_to_listing_table;
-use crate::materialized::{hive_partition::hive_partition, META_COLUMN};
-
-use super::row_metadata::RowMetadataSource;
 
 /// A virtual file metadata table, inspired by the information schema column table.
 #[derive(Debug, Clone)]
@@ -123,79 +120,6 @@ impl TableProvider for FileMetadata {
         filters: &[&Expr],
     ) -> Result<Vec<TableProviderFilterPushDown>> {
         Ok(vec![TableProviderFilterPushDown::Inexact; filters.len()])
-    }
-}
-
-impl RowMetadataSource for FileMetadata {
-    fn name(&self) -> &str {
-        "FileMetadata"
-    }
-
-    /// Scan for partition column values using object store metadata.
-    /// This allows us to efficiently scan for distinct partition column values without
-    /// ever reading from a table directly, which is useful for low-overhead
-    /// incremental view maintenance.
-    fn row_metadata(
-        self: Arc<Self>,
-        table: datafusion_sql::ResolvedTableReference,
-        scan: &datafusion_expr::TableScan,
-    ) -> Result<datafusion_expr::LogicalPlanBuilder> {
-        use datafusion::datasource::source_as_provider;
-        use datafusion::functions::core::expr_fn::named_struct;
-        use datafusion::prelude::*;
-
-        // Check that the remaining columns in the source table scans are indeed partition columns
-        let partition_cols = cast_to_listing_table(source_as_provider(&scan.source)?.as_ref())
-            .ok_or_else(|| {
-                DataFusionError::Internal(format!(
-                    "Table '{}' was not registered in TableTypeRegistry",
-                    scan.table_name
-                ))
-            })?
-            .partition_columns();
-
-        for column in scan.projected_schema.columns() {
-            if !partition_cols.contains(&column.name) {
-                return Err(DataFusionError::Internal(format!("Row metadata not available on non-partition column from source table '{table}': {}", column.name)));
-            }
-        }
-
-        let fields = scan.projected_schema.fields();
-
-        let row_metadata_expr = make_array(vec![named_struct(vec![
-            lit("table_catalog"),
-            col("table_catalog"),
-            lit("table_schema"),
-            col("table_schema"),
-            lit("table_name"),
-            col("table_name"),
-            lit("source_uri"), // Map file_path to source_uri
-            col("file_path"),
-            lit("last_modified"),
-            col("last_modified"),
-        ])])
-        .alias(META_COLUMN);
-
-        datafusion_expr::LogicalPlanBuilder::scan("file_metadata", provider_as_source(self), None)?
-            .filter(
-                col("table_catalog")
-                    .eq(lit(table.catalog.as_ref()))
-                    .and(col("table_schema").eq(lit(table.schema.as_ref())))
-                    .and(col("table_name").eq(lit(table.table.as_ref()))),
-            )?
-            .project(
-                fields
-                    .iter()
-                    .map(|field| {
-                        // CAST(hive_partition(file_path, 'field_name', true) AS field_data_type) AS field_name
-                        cast(
-                            hive_partition(vec![col("file_path"), lit(field.name()), lit(true)]),
-                            field.data_type().clone(),
-                        )
-                        .alias(field.name())
-                    })
-                    .chain(Some(row_metadata_expr)),
-            )
     }
 }
 

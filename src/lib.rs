@@ -25,11 +25,20 @@
 /// By analyzing the fragment of the materialized view query pertaining to the partition columns,
 /// we can derive a build graph that relates the files of a materialized views and the files of the tables it depends on.
 ///
-/// A central trait is defined for Hive-partitioned tables, [`ListingTableLike`](materialized::ListingTableLike). Note that
-/// all implementations of [`ListingTableLike`](materialized::ListingTableLike) must be registered using the
-/// [`register_listing_table`](materialized::register_listing_table) function, otherwise the tables may not be detected by
-/// the incremental view maintenance code, including components such as [`FileMetadata`](materialized::file_metadata::FileMetadata)
-/// or [`RowMetadataRegistry`](materialized::row_metadata::RowMetadataRegistry).
+/// Two central traits are defined:
+///
+/// * [`ListingTableLike`](materialized::ListingTableLike): a trait that abstracts Hive-partitioned tables in object storage;
+/// * [`Materialized`](materialized::Materialized): a materialized `ListingTableLike` defined by a user-provided query.
+///
+/// Note that all implementations of `ListingTableLike` and `Materialized` must be registered using the
+/// [`register_listing_table`](materialized::register_listing_table) and
+/// [`register_materialized`](materialized::register_materialized) functions respectively,
+/// otherwise the tables may not be detected by the incremental view maintenance code,
+/// including components such as [`FileMetadata`](materialized::file_metadata::FileMetadata),
+/// [`RowMetadataRegistry`](materialized::row_metadata::RowMetadataRegistry), or the
+/// [`file_dependencies`](materialized::dependencies::file_dependencies) UDTF.
+///
+/// By default, `ListingTableLike` is implemented for [`ListingTable`](datafusion::datasource::listing::ListingTable),
 pub mod materialized;
 
 /// An implementation of Query Rewriting, an optimization that rewrites queries to make use of materialized views.

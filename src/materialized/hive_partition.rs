@@ -53,7 +53,7 @@ pub static HIVE_PARTITION_UDF_NAME: &str = "hive_partition";
 /// SELECT
 ///     column_name,
 ///     hive_partition(
-///         's3://atlas/sip/trades/year=2006/month=01/day=02/trades-2006-01-02.parquet',
+///         's3://sip/trades/year=2006/month=01/day=02/trades-2006-01-02.parquet',
 ///         column_name
 ///     ) AS partition_value
 /// FROM (VALUES ('year'), ('month'), ('day')) AS partition_columns (column_name);

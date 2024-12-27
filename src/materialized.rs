@@ -16,7 +16,7 @@
 // under the License.
 
 /// Track dependencies of materialized data in object storage
-mod dependencies;
+pub mod dependencies;
 
 /// Pluggable metadata sources for incremental view maintenance
 pub mod row_metadata;
@@ -26,6 +26,9 @@ pub mod file_metadata;
 
 /// A UDF that parses Hive partition elements from object storage paths.
 mod hive_partition;
+
+/// Some private utility functions
+mod util;
 
 use std::{
     any::{type_name, Any, TypeId},
@@ -78,7 +81,7 @@ impl ListingTableLike for ListingTable {
 
 /// Register a [`ListingTableLike`] implementation in this registry.
 /// This allows `cast_to_listing_table` to easily downcast a [`TableProvider`]
-/// into a [`ListingTableLike`] where possible.
+/// into a `ListingTableLike` where possible.
 pub fn register_listing_table<T: ListingTableLike>() {
     TABLE_TYPE_REGISTRY.register_listing_table::<T>();
 }
@@ -95,15 +98,31 @@ pub trait Materialized: ListingTableLike {
     fn query(&self) -> LogicalPlan;
 }
 
+/// Register a [`Materialized`] implementation in this registry.
+/// This allows `cast_to_materialized` to easily downcast a [`TableProvider`]
+/// into a `Materialized` where possible.
+///
+/// Note that this will also register `T` as a [`ListingTableLike`].
+pub fn register_materialized<T: Materialized>() {
+    TABLE_TYPE_REGISTRY.register_materialized::<T>();
+}
+
+/// Attempt to cast the given TableProvider into a [`Materialized`].
+/// If the table's type has not been registered using [`register_materialized`], will return `None`.
+pub fn cast_to_materialized(table: &dyn TableProvider) -> Option<&dyn Materialized> {
+    TABLE_TYPE_REGISTRY.cast_to_materialized(table)
+}
+
 type Downcaster<T> = Arc<dyn Fn(&dyn Any) -> Option<&T> + Send + Sync>;
 
-/// A registry for implementations of [`ListingTableLike`], used for downcasting
-/// arbitrary TableProviders into `dyn ListingTableLike` where possible.
+/// A registry for implementations of library-defined traits, used for downcasting
+/// arbitrary TableProviders into `ListingTableLike` and `Materialized` trait objects where possible.
 ///
-/// This is used throughout the crate as a singleton to store all known implementations of `ListingTableLike`.
-/// By default, [`ListingTable`] is registered.
+/// This is used throughout the crate as a singleton to store all known implementations of `ListingTableLike` and `Materialized`.
+/// By default, [`ListingTable`] is registered as a `ListingTableLike`.
 struct TableTypeRegistry {
     listing_table_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn ListingTableLike>)>,
+    materialized_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn Materialized>)>,
 }
 
 impl Debug for TableTypeRegistry {
@@ -125,6 +144,7 @@ impl Default for TableTypeRegistry {
     fn default() -> Self {
         let new = Self {
             listing_table_accessors: DashMap::new(),
+            materialized_accessors: DashMap::new(),
         };
         new.register_listing_table::<ListingTable>();
 
@@ -143,11 +163,32 @@ impl TableTypeRegistry {
         );
     }
 
+    fn register_materialized<T: Materialized>(&self) {
+        self.materialized_accessors.insert(
+            TypeId::of::<T>(),
+            (
+                type_name::<T>(),
+                Arc::new(|any| any.downcast_ref::<T>().map(|t| t as &dyn Materialized)),
+            ),
+        );
+
+        self.register_listing_table::<T>();
+    }
+
     fn cast_to_listing_table<'a>(
         &'a self,
         table: &'a dyn TableProvider,
     ) -> Option<&'a dyn ListingTableLike> {
         self.listing_table_accessors
+            .get(&table.as_any().type_id())
+            .and_then(|r| r.value().1(table.as_any()))
+    }
+
+    fn cast_to_materialized<'a>(
+        &'a self,
+        table: &'a dyn TableProvider,
+    ) -> Option<&'a dyn Materialized> {
+        self.materialized_accessors
             .get(&table.as_any().type_id())
             .and_then(|r| r.value().1(table.as_any()))
     }

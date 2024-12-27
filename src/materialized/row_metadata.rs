@@ -16,10 +16,13 @@
 // under the License.
 
 use dashmap::DashMap;
+use datafusion::catalog::TableProvider;
 use datafusion_common::{DataFusionError, Result};
 use datafusion_expr::{LogicalPlanBuilder, TableScan};
 use datafusion_sql::ResolvedTableReference;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
+
+use super::{file_metadata::FileMetadata, hive_partition::hive_partition, META_COLUMN};
 
 /// Registry that manages metadata sources for different tables.
 /// Provides a centralized way to register and retrieve metadata sources
@@ -27,6 +30,21 @@ use std::sync::Arc;
 #[derive(Default)]
 pub struct RowMetadataRegistry {
     metadata_sources: DashMap<String, Arc<dyn RowMetadataSource>>,
+}
+
+impl std::fmt::Debug for RowMetadataRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RowMetadataRegistry")
+            .field(
+                "metadata_sources",
+                &self
+                    .metadata_sources
+                    .iter()
+                    .map(|r| (r.key().clone(), r.value().name().to_string()))
+                    .collect::<BTreeMap<_, _>>(),
+            )
+            .finish()
+    }
 }
 
 impl RowMetadataRegistry {
@@ -52,7 +70,7 @@ impl RowMetadataRegistry {
 /// A source for "row metadata", that associates rows from a table with
 /// metadata used for incremental view maintenance.
 ///
-/// Most use cases should default to using [`FileMetadata`](super::file_metadata::FileMetadata) for their [`RowMetadataSource`],
+/// Most use cases should default to using [`FileMetadata`] for their [`RowMetadataSource`],
 /// which uses object store metadata to perform incremental view maintenance on Hive-partitioned tables.
 /// However, in some use cases it is necessary to track metadata at a more granular level than Hive partitions.
 /// In such cases, users may implement a custom [`RowMetadataSource`] containing this metadata.
@@ -81,8 +99,112 @@ pub trait RowMetadataSource: Send + Sync {
     /// That is, for each row in the original table scan, the [`RowMetadataSource`] should contain at least
     /// one row (but potentially more) with the same values, plus the `__meta` column.
     fn row_metadata(
-        self: Arc<Self>,
+        &self,
         table: ResolvedTableReference,
         scan: &TableScan,
     ) -> Result<LogicalPlanBuilder>;
+}
+
+/// A [`RowMetadataSource`] that uses an object storage API to retrieve
+/// partition columns and timestamp metadata.
+///
+/// Object store metadata by default comes from [`FileMetadata`], but
+/// may be overridden with a custom [`TableProvider`] using
+/// [`Self::with_file_metadata`].
+#[derive(Debug, Clone)]
+pub struct ObjectStoreRowMetadataSource {
+    file_metadata: Arc<dyn TableProvider>,
+}
+
+impl ObjectStoreRowMetadataSource {
+    /// Create a new [`ObjectStoreRowMetadataSource`] from the [`FileMetadata`] table
+    pub fn new(file_metadata: Arc<FileMetadata>) -> Self {
+        Self::with_file_metadata(file_metadata)
+    }
+
+    /// Create a new [`ObjectStoreRowMetadataSource`] using a custom file metadata source
+    pub fn with_file_metadata(file_metadata: Arc<dyn TableProvider>) -> Self {
+        Self { file_metadata }
+    }
+}
+
+impl RowMetadataSource for ObjectStoreRowMetadataSource {
+    fn name(&self) -> &str {
+        "ObjectStoreRowMetadataSource"
+    }
+
+    /// Scan for partition column values using object store metadata.
+    /// This allows us to efficiently scan for distinct partition column values without
+    /// ever reading from a table directly, which is useful for low-overhead
+    /// incremental view maintenance.
+    fn row_metadata(
+        &self,
+        table: datafusion_sql::ResolvedTableReference,
+        scan: &datafusion_expr::TableScan,
+    ) -> Result<datafusion_expr::LogicalPlanBuilder> {
+        use datafusion::{datasource::provider_as_source, prelude::*};
+
+        // Disable this check in tests
+        #[cfg(not(test))]
+        {
+            // Check that the remaining columns in the source table scans are indeed partition columns
+            let partition_cols = super::cast_to_listing_table(
+                datafusion::datasource::source_as_provider(&scan.source)?.as_ref(),
+            )
+            .ok_or_else(|| {
+                DataFusionError::Internal(format!(
+                    "Table '{}' was not registered in TableTypeRegistry",
+                    scan.table_name
+                ))
+            })?
+            .partition_columns();
+
+            for column in scan.projected_schema.columns() {
+                if !partition_cols.contains(&column.name) {
+                    return Err(DataFusionError::Internal(format!("Row metadata not available on non-partition column from source table '{table}': {}", column.name)));
+                }
+            }
+        }
+
+        let fields = scan.projected_schema.fields();
+
+        let row_metadata_expr = named_struct(vec![
+            lit("table_catalog"),
+            col("table_catalog"),
+            lit("table_schema"),
+            col("table_schema"),
+            lit("table_name"),
+            col("table_name"),
+            lit("source_uri"), // Map file_path to source_uri
+            col("file_path"),
+            lit("last_modified"),
+            col("last_modified"),
+        ])
+        .alias(META_COLUMN);
+
+        datafusion_expr::LogicalPlanBuilder::scan(
+            "file_metadata",
+            provider_as_source(Arc::clone(&self.file_metadata)),
+            None,
+        )?
+        .filter(
+            col("table_catalog")
+                .eq(lit(table.catalog.as_ref()))
+                .and(col("table_schema").eq(lit(table.schema.as_ref())))
+                .and(col("table_name").eq(lit(table.table.as_ref()))),
+        )?
+        .project(
+            fields
+                .iter()
+                .map(|field| {
+                    // CAST(hive_partition(file_path, 'field_name', true) AS field_data_type) AS field_name
+                    cast(
+                        hive_partition(vec![col("file_path"), lit(field.name()), lit(true)]),
+                        field.data_type().clone(),
+                    )
+                    .alias(field.name())
+                })
+                .chain(Some(row_metadata_expr)),
+        )
+    }
 }
