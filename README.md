@@ -14,7 +14,7 @@ This is a typical pattern with DataFusion, as files in object storage usually ar
 ## Example
 
 Here we walk through a hypothetical example of setting up a materialized view, to illustrate
-what this library offers. The core of the incremental view maintenance is a UDTF, called `file_dependencies`, that
+what this library offers. The core of the incremental view maintenance is a UDTF (User-Defined Table Function), called `file_dependencies`, that
 outputs a build graph for a materialized view. This gives users the information they need to determine
 when partitions of the materialized view need to be recomputed.
 
