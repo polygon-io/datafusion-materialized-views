@@ -28,19 +28,19 @@ keywords = ["arrow", "arrow-rs", "datafusion"]
 rust-version = "1.80"
 
 [dependencies]
-arrow = "53"
-arrow-schema = "53"
+arrow = { git = "https://github.com/influxdata/arrow-rs", rev = "aa8c048" }
+arrow-schema = { git = "https://github.com/influxdata/arrow-rs", rev = "aa8c048" }
 async-trait = "0.1"
 dashmap = "6"
-datafusion = "43"
-datafusion-common = "43"
-datafusion-expr = "43"
-datafusion-functions = "43"
-datafusion-functions-aggregate = "43"
-datafusion-optimizer = "43"
-datafusion-physical-expr = "43"
-datafusion-physical-plan = "43"
-datafusion-sql = "43"
+datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
+datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5383d30" }
 futures = "0.3"
 itertools = "0.13"
 log = "0.4"
