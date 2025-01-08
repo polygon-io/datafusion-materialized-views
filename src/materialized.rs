@@ -89,7 +89,13 @@ pub fn register_listing_table<T: ListingTableLike>() {
 /// Attempt to cast the given TableProvider into a [`ListingTableLike`].
 /// If the table's type has not been registered using [`register_listing_table`], will return `None`.
 pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTableLike> {
-    TABLE_TYPE_REGISTRY.cast_to_listing_table(table)
+    TABLE_TYPE_REGISTRY
+        .cast_to_listing_table(table)
+        .or_else(|| {
+            TABLE_TYPE_REGISTRY
+                .cast_to_decorator(table)
+                .and_then(|decorator| cast_to_listing_table(decorator.base()))
+        })
 }
 
 /// A hive-partitioned table in object storage that is defined by a user-provided query.
@@ -110,7 +116,24 @@ pub fn register_materialized<T: Materialized>() {
 /// Attempt to cast the given TableProvider into a [`Materialized`].
 /// If the table's type has not been registered using [`register_materialized`], will return `None`.
 pub fn cast_to_materialized(table: &dyn TableProvider) -> Option<&dyn Materialized> {
-    TABLE_TYPE_REGISTRY.cast_to_materialized(table)
+    TABLE_TYPE_REGISTRY.cast_to_materialized(table).or_else(|| {
+        TABLE_TYPE_REGISTRY
+            .cast_to_decorator(table)
+            .and_then(|decorator| cast_to_materialized(decorator.base()))
+    })
+}
+
+/// A `TableProvider` that decorates other `TableProvider`s.
+/// Sometimes users may implement a `TableProvider` that overrides functionality of a base `TableProvider`.
+/// This API allows the decorator to also be recognized as `ListingTableLike` or `Materialized` automatically.
+pub trait Decorator: TableProvider + 'static {
+    /// The underlying `TableProvider` that this decorator wraps.
+    fn base(&self) -> &dyn TableProvider;
+}
+
+/// Register `T` as a [`Decorator`].
+pub fn register_decorator<T: Decorator>() {
+    TABLE_TYPE_REGISTRY.register_decorator::<T>()
 }
 
 type Downcaster<T> = Arc<dyn Fn(&dyn Any) -> Option<&T> + Send + Sync>;
@@ -123,6 +146,7 @@ type Downcaster<T> = Arc<dyn Fn(&dyn Any) -> Option<&T> + Send + Sync>;
 struct TableTypeRegistry {
     listing_table_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn ListingTableLike>)>,
     materialized_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn Materialized>)>,
+    decorator_accessors: DashMap<TypeId, (&'static str, Downcaster<dyn Decorator>)>,
 }
 
 impl Debug for TableTypeRegistry {
@@ -145,6 +169,7 @@ impl Default for TableTypeRegistry {
         let new = Self {
             listing_table_accessors: DashMap::new(),
             materialized_accessors: DashMap::new(),
+            decorator_accessors: DashMap::new(),
         };
         new.register_listing_table::<ListingTable>();
 
@@ -175,6 +200,16 @@ impl TableTypeRegistry {
         self.register_listing_table::<T>();
     }
 
+    fn register_decorator<T: Decorator>(&self) {
+        self.decorator_accessors.insert(
+            TypeId::of::<T>(),
+            (
+                type_name::<T>(),
+                Arc::new(|any| any.downcast_ref::<T>().map(|t| t as &dyn Decorator)),
+            ),
+        );
+    }
+
     fn cast_to_listing_table<'a>(
         &'a self,
         table: &'a dyn TableProvider,
@@ -189,6 +224,12 @@ impl TableTypeRegistry {
         table: &'a dyn TableProvider,
     ) -> Option<&'a dyn Materialized> {
         self.materialized_accessors
+            .get(&table.as_any().type_id())
+            .and_then(|r| r.value().1(table.as_any()))
+    }
+
+    fn cast_to_decorator<'a>(&'a self, table: &'a dyn TableProvider) -> Option<&'a dyn Decorator> {
+        self.decorator_accessors
             .get(&table.as_any().type_id())
             .and_then(|r| r.value().1(table.as_any()))
     }
