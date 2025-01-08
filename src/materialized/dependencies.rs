@@ -107,8 +107,8 @@ impl TableFunctionImpl for FileDependenciesUdtf {
         let table = util::get_table(self.catalog_list.as_ref(), &table_ref)
             .map_err(|e| DataFusionError::Plan(e.to_string()))?;
 
-        let mv = cast_to_materialized(table.as_ref()).ok_or(DataFusionError::Plan(
-            "mv_dependencies: table '{table_name} is not a materialized view. (Materialized TableProviders must be registered using register_materialized".to_string(),
+        let mv = cast_to_materialized(table.as_ref()).ok_or(DataFusionError::Plan(format!(
+            "mv_dependencies: table '{table_name} is not a materialized view. (Materialized TableProviders must be registered using register_materialized"),
         ))?;
 
         Ok(Arc::new(ViewTable::try_new(
@@ -846,9 +846,9 @@ mod test {
 
     use crate::materialized::{
         dependencies::pushdown_projection_inexact,
-        register_materialized,
+        register_decorator, register_materialized,
         row_metadata::{ObjectStoreRowMetadataSource, RowMetadataRegistry},
-        ListingTableLike, Materialized,
+        Decorator, ListingTableLike, Materialized,
     };
 
     use super::{mv_dependencies, stale_files};
@@ -907,10 +907,47 @@ mod test {
         }
     }
 
+    #[derive(Debug)]
+    struct DecoratorTable {
+        inner: Arc<dyn TableProvider>,
+    }
+
+    #[async_trait::async_trait]
+    impl TableProvider for DecoratorTable {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn schema(&self) -> SchemaRef {
+            self.inner.schema()
+        }
+
+        fn table_type(&self) -> TableType {
+            self.inner.table_type()
+        }
+
+        async fn scan(
+            &self,
+            state: &dyn Session,
+            projection: Option<&Vec<usize>>,
+            filters: &[Expr],
+            limit: Option<usize>,
+        ) -> Result<Arc<dyn ExecutionPlan>> {
+            self.inner.scan(state, projection, filters, limit).await
+        }
+    }
+
+    impl Decorator for DecoratorTable {
+        fn base(&self) -> &dyn TableProvider {
+            self.inner.as_ref()
+        }
+    }
+
     async fn setup() -> Result<SessionContext> {
         let _ = env_logger::builder().is_test(true).try_init();
 
         register_materialized::<MockMaterializedView>();
+        register_decorator::<DecoratorTable>();
 
         let state = SessionStateBuilder::new()
             .with_default_features()
@@ -1298,15 +1335,18 @@ mod test {
             context
                 .register_table(
                     case.table_name,
-                    Arc::new(MockMaterializedView {
-                        table_path: case.table_path.clone(),
-                        partition_columns: case
-                            .partition_cols
-                            .iter()
-                            .map(|s| s.to_string())
-                            .collect(),
-                        query: plan,
-                        file_ext: case.file_extension,
+                    // Register table with a decorator to exercise this functionality
+                    Arc::new(DecoratorTable {
+                        inner: Arc::new(MockMaterializedView {
+                            table_path: case.table_path.clone(),
+                            partition_columns: case
+                                .partition_cols
+                                .iter()
+                                .map(|s| s.to_string())
+                                .collect(),
+                            query: plan,
+                            file_ext: case.file_extension,
+                        }),
                     }),
                 )
                 .expect("couldn't register materialized view");
