@@ -16,9 +16,9 @@
 // under the License.
 
 use datafusion::{
-    catalog::CatalogProviderList,
+    catalog::{CatalogProviderList, TableFunctionImpl},
     config::{CatalogOptions, ConfigOptions},
-    datasource::{function::TableFunctionImpl, provider_as_source, TableProvider, ViewTable},
+    datasource::{provider_as_source, TableProvider, ViewTable},
     prelude::{flatten, get_field, make_array},
 };
 use datafusion_common::{
