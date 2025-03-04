@@ -1549,9 +1549,9 @@ mod test {
                 name: "window & unnest",
                 query_to_analyze: "
                 SELECT
-                    \"unnest_placeholder(date).year\" AS year,
-                    \"unnest_placeholder(date).month\" AS month,
-                    \"unnest_placeholder(date).day\" AS day,
+                    \"__unnest_placeholder(date).year\" AS year,
+                    \"__unnest_placeholder(date).month\" AS month,
+                    \"__unnest_placeholder(date).day\" AS day,
                     arr
                 FROM (
                     SELECT
@@ -1568,14 +1568,14 @@ mod test {
                 )",
                 projection: &["year", "month", "day"],
                 expected_plan: vec![
-                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------+",
-                    "| plan_type    | plan                                                                                                                            |",
-                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------+",
-                    "| logical_plan | Projection: unnest_placeholder(date).year AS year, unnest_placeholder(date).month AS month, unnest_placeholder(date).day AS day |",
-                    "|              |   Unnest: lists[] structs[unnest_placeholder(date)]                                                                             |",
-                    "|              |     Projection: named_struct(Utf8(\"year\"), t2.year, Utf8(\"month\"), t2.month, Utf8(\"day\"), t2.day) AS unnest_placeholder(date)   |",
-                    "|              |       TableScan: t2 projection=[year, month, day]                                                                               |",
-                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------+",
+                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------------+",
+                    "| plan_type    | plan                                                                                                                                  |",
+                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------------+",
+                    "| logical_plan | Projection: __unnest_placeholder(date).year AS year, __unnest_placeholder(date).month AS month, __unnest_placeholder(date).day AS day |",
+                    "|              |   Unnest: lists[] structs[__unnest_placeholder(date)]                                                                                 |",
+                    "|              |     Projection: named_struct(Utf8(\"year\"), t2.year, Utf8(\"month\"), t2.month, Utf8(\"day\"), t2.day) AS __unnest_placeholder(date)       |",
+                    "|              |       TableScan: t2 projection=[year, month, day]                                                                                     |",
+                    "+--------------+---------------------------------------------------------------------------------------------------------------------------------------+",
                 ],
                 expected_output: vec![
                     "+------+-------+-----+",
