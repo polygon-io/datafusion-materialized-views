@@ -906,6 +906,9 @@ fn get_source_files_all_partitions(
             },
         )?
         .ok_or_else(|| DataFusionError::Plan("materialized view has no source tables".into()))?
+        // [`RowMetadataSource`] returns a Struct,
+        // but the MV algorithm expects a list of structs at each node in the plan.
+        .project(vec![make_array(vec![col(META_COLUMN)]).alias(META_COLUMN)])?
         .build()
 }
 
