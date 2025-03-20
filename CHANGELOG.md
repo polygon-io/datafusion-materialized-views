@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/polygon-io/datafusion-materialized-views/compare/v0.1.1...v0.1.2) - 2025-03-20
+
+### Added
+- `Decorator` trait ([#26](https://github.com/polygon-io/datafusion-materialized-views/pull/26)) (by @suremarc) - #26
+
+### Other
+- Resolve conflicts (by @matthewmturner) - #5
+- Pin chrono (by @matthewmturner) - #3
+- update datafusion fork rev (by @suremarc) - #3
+- update deps to use arrow/datafusion forks (by @suremarc) - #3
+- Update extension ([#45](https://github.com/polygon-io/datafusion-materialized-views/pull/45)) (by @matthewmturner) - #3
+- make explain output stable ([#44](https://github.com/polygon-io/datafusion-materialized-views/pull/44)) (by @suremarc) - #44
+- Add alternate analysis for MVs with no partition columns ([#39](https://github.com/polygon-io/datafusion-materialized-views/pull/39)) (by @suremarc) - #39
+- upgrade to datafusion 45 ([#38](https://github.com/polygon-io/datafusion-materialized-views/pull/38)) (by @suremarc) - #38
+- use nanosecond timestamps in file metadata ([#28](https://github.com/polygon-io/datafusion-materialized-views/pull/28)) (by @suremarc) - #28
+
+### Contributors
+
+* @matthewmturner
+* @suremarc
+
 ## [0.1.1](https://github.com/datafusion-contrib/datafusion-materialized-views/compare/v0.1.0...v0.1.1) - 2025-01-07
 
 ### Added
