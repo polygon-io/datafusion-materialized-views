@@ -31,6 +31,7 @@ rust-version = "1.80"
 arrow = { git = "https://github.com/influxdata/arrow-rs", rev = "36685f0" }
 arrow-schema = { git = "https://github.com/influxdata/arrow-rs", rev = "36685f0" }
 async-trait = "0.1"
+chrono = "= 0.4.39"
 dashmap = "6"
 datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "08b3ce0" }
 datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "08b3ce0" }
