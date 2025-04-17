@@ -32,15 +32,15 @@ arrow = { version = "54.2.1" }
 arrow-schema = { version = "54.1.0" }
 async-trait = "0.1"
 dashmap = "6"
-datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
-datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "2126c09" }
+datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
+datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "5fd7550" }
 futures = "0.3"
 itertools = "0.13"
 log = "0.4"
