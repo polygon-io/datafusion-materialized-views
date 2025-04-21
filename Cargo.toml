@@ -42,10 +42,10 @@ datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusi
 datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
 datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
 futures = "0.3"
-itertools = "0.13"
+itertools = "0.14"
 log = "0.4"
-object_store = "0.11"
-ordered-float = "4.6.0"
+object_store = "0.12"
+ordered-float = "5.0.0"
 
 [dev-dependencies]
 anyhow = "1.0.95"
