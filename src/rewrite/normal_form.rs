@@ -263,7 +263,7 @@ impl SpjNormalForm {
         source: Arc<dyn TableSource>,
     ) -> Result<Option<LogicalPlan>> {
         log::trace!("rewriting from {qualifier}");
-        let mut new_output_exprs = vec![];
+        let mut new_output_exprs = Vec::with_capacity(self.output_exprs.len());
         // check that our output exprs are sub-expressions of the other one's output exprs
         for (i, output_expr) in self.output_exprs.iter().enumerate() {
             let new_output_expr = other
@@ -350,7 +350,11 @@ impl Predicate {
         let mut schema = DFSchema::empty();
         plan.apply(|plan| {
             if let LogicalPlan::TableScan(scan) = plan {
-                schema = schema.join(&scan.projected_schema)?;
+                schema = if schema.fields().is_empty() {
+                    (*scan.projected_schema).clone()
+                } else {
+                    schema.join(&scan.projected_schema)?
+                }
             }
 
             Ok(TreeNodeRecursion::Continue)
@@ -367,14 +371,14 @@ impl Predicate {
         // Collect all referenced columns
         plan.apply(|plan| {
             if let LogicalPlan::TableScan(scan) = plan {
-                for (i, column) in scan.projected_schema.columns().iter().enumerate() {
+                for (i, (table_ref, field)) in scan.projected_schema.iter().enumerate() {
+                    let column = Column::new(table_ref.cloned(), field.name());
+                    let data_type = field.data_type();
                     new.eq_classes
                         .push(ColumnEquivalenceClass::new_singleton(column.clone()));
-                    new.eq_class_idx_by_column.insert(column.clone(), i);
+                    new.eq_class_idx_by_column.insert(column, i);
                     new.ranges_by_equivalence_class
-                        .push(Some(Interval::make_unbounded(
-                            scan.projected_schema.data_type(column)?,
-                        )?));
+                        .push(Some(Interval::make_unbounded(data_type)?));
                 }
             }
 
