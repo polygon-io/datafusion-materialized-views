@@ -28,19 +28,19 @@ keywords = ["arrow", "arrow-rs", "datafusion"]
 rust-version = "1.80"
 
 [dependencies]
-arrow = { version = "54.2.1" }
-arrow-schema = { version = "54.1.0" }
+arrow = { version = "55.0.0" }
+arrow-schema = { version = "55.0.0" }
 async-trait = "0.1"
 dashmap = "6"
-datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
-datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "cb5459c" }
+datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
+datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "378ce3b" }
 futures = "0.3"
 itertools = "0.13"
 log = "0.4"
