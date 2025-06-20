@@ -702,7 +702,7 @@ impl FileMetadataBuilder {
             .append_value(format!("{store_url}{}", meta.location));
         self.last_modified
             .append_option(meta.last_modified.timestamp_nanos_opt());
-        self.size.append_value(meta.size); // this is not lossy assuming we're on a 64-bit platform
+        self.size.append_value(meta.size as u64); // this is not lossy assuming we're on a 64-bit platform
     }
 
     fn finish(mut self) -> Result<RecordBatch> {
@@ -763,7 +763,7 @@ impl FileMetadataProvider for DefaultFileMetadataProvider {
         let prefix = url.prefix().clone();
 
         let list = match is_dir {
-            true => store.list(Some(&prefix)),
+            true => stream::iter(store.list(Some(&prefix)).collect::<Vec<_>>().await).boxed(),
             false => futures::stream::once(async move { store.head(&prefix).await }).boxed(),
         };
 
