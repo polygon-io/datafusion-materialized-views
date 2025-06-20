@@ -263,7 +263,7 @@ impl SpjNormalForm {
         source: Arc<dyn TableSource>,
     ) -> Result<Option<LogicalPlan>> {
         log::trace!("rewriting from {qualifier}");
-        let mut new_output_exprs = vec![];
+        let mut new_output_exprs = Vec::with_capacity(self.output_exprs.len());
         // check that our output exprs are sub-expressions of the other one's output exprs
         for (i, output_expr) in self.output_exprs.iter().enumerate() {
             let new_output_expr = other
@@ -334,6 +334,7 @@ impl SpjNormalForm {
 /// Stores information on filters from a Select-Project-Join plan.
 #[derive(Debug, Clone)]
 struct Predicate {
+    /// Full table schema, including all possible columns.
     schema: DFSchema,
     /// List of column equivalence classes.
     eq_classes: Vec<ColumnEquivalenceClass>,
@@ -350,7 +351,15 @@ impl Predicate {
         let mut schema = DFSchema::empty();
         plan.apply(|plan| {
             if let LogicalPlan::TableScan(scan) = plan {
-                schema = schema.join(&scan.projected_schema)?;
+                let new_schema = DFSchema::try_from_qualified_schema(
+                    scan.table_name.clone(),
+                    scan.source.schema().as_ref(),
+                )?;
+                schema = if schema.fields().is_empty() {
+                    new_schema
+                } else {
+                    schema.join(&new_schema)?
+                }
             }
 
             Ok(TreeNodeRecursion::Continue)
@@ -367,14 +376,20 @@ impl Predicate {
         // Collect all referenced columns
         plan.apply(|plan| {
             if let LogicalPlan::TableScan(scan) = plan {
-                for (i, column) in scan.projected_schema.columns().iter().enumerate() {
+                for (i, (table_ref, field)) in DFSchema::try_from_qualified_schema(
+                    scan.table_name.clone(),
+                    scan.source.schema().as_ref(),
+                )?
+                .iter()
+                .enumerate()
+                {
+                    let column = Column::new(table_ref.cloned(), field.name());
+                    let data_type = field.data_type();
                     new.eq_classes
                         .push(ColumnEquivalenceClass::new_singleton(column.clone()));
-                    new.eq_class_idx_by_column.insert(column.clone(), i);
+                    new.eq_class_idx_by_column.insert(column, i);
                     new.ranges_by_equivalence_class
-                        .push(Some(Interval::make_unbounded(
-                            scan.projected_schema.data_type(column)?,
-                        )?));
+                        .push(Some(Interval::make_unbounded(data_type)?));
                 }
             }
 
@@ -481,8 +496,19 @@ impl Predicate {
         let range = self
             .eq_class_idx_by_column
             .get(c)
-            .and_then(|&idx| self.ranges_by_equivalence_class.get_mut(idx))
-            .unwrap();
+            .ok_or_else(|| {
+                DataFusionError::Plan(format!("column {c} not found in equivalence classes"))
+            })
+            .and_then(|&idx| {
+                self.ranges_by_equivalence_class
+                    .get_mut(idx)
+                    .ok_or_else(|| {
+                        DataFusionError::Plan(format!(
+                            "range not found class not found for column {c} with equivalence class {:?}", self.eq_classes.get(idx)
+                        ))
+                    })
+            })?;
+
         let new_range = match op {
             Operator::Eq => Interval::try_new(value.clone(), value.clone()),
             Operator::LtEq => {
@@ -944,17 +970,47 @@ fn get_table_scan_columns(scan: &TableScan) -> Result<Vec<Column>> {
 #[cfg(test)]
 mod test {
     use arrow::compute::concat_batches;
-    use datafusion::{datasource::provider_as_source, prelude::SessionContext};
+    use datafusion::{
+        datasource::provider_as_source,
+        prelude::{SessionConfig, SessionContext},
+    };
     use datafusion_common::{DataFusionError, Result};
     use datafusion_sql::TableReference;
+    use tempfile::tempdir;
 
     use super::SpjNormalForm;
 
     async fn setup() -> Result<SessionContext> {
-        let ctx = SessionContext::new();
+        let ctx = SessionContext::new_with_config(
+            SessionConfig::new()
+                .set_bool("datafusion.execution.parquet.pushdown_filters", true)
+                .set_bool("datafusion.explain.logical_plan_only", true),
+        );
+
+        let t1_path = tempdir()?;
+
+        // Create external table to exercise parquet filter pushdown.
+        // This will put the filters directly inside the `TableScan` node.
+        // This is important because `TableScan` can have filters on
+        // columns not in its own output.
+        ctx.sql(&format!(
+            "
+                CREATE EXTERNAL TABLE t1 (
+                    column1 VARCHAR, 
+                    column2 BIGINT, 
+                    column3 CHAR
+                )
+                STORED AS PARQUET 
+                LOCATION '{}'",
+            t1_path.path().to_string_lossy()
+        ))
+        .await
+        .map_err(|e| e.context("setup `t1` table"))?
+        .collect()
+        .await?;
 
         ctx.sql(
-            "CREATE TABLE t1 AS VALUES 
+            "INSERT INTO t1 VALUES
             ('2021', 3, 'A'),
             ('2022', 4, 'B'),
             ('2023', 5, 'C')",
@@ -976,8 +1032,7 @@ mod test {
                 o_orderdate DATE,
                 p_name VARCHAR,
                 p_partkey INT
-            )
-        ",
+            )",
         )
         .await
         .map_err(|e| e.context("parse `example` table ddl"))?
@@ -1010,6 +1065,15 @@ mod test {
         let query_plan = context.sql(case.query).await?.into_optimized_plan()?;
         let query_normal_form = SpjNormalForm::new(&query_plan)?;
 
+        for plan in [&base_plan, &query_plan] {
+            context
+                .execute_logical_plan(plan.clone())
+                .await?
+                .explain(false, false)?
+                .show()
+                .await?;
+        }
+
         let table_ref = TableReference::bare("mv");
         let rewritten = query_normal_form
             .rewrite_from(
@@ -1021,16 +1085,14 @@ mod test {
                 "expected rewrite to succeed".to_string(),
             ))?;
 
-        assert_eq!(rewritten.schema().as_ref(), query_plan.schema().as_ref());
+        context
+            .execute_logical_plan(rewritten.clone())
+            .await?
+            .explain(false, false)?
+            .show()
+            .await?;
 
-        for plan in [&base_plan, &query_plan, &rewritten] {
-            context
-                .execute_logical_plan(plan.clone())
-                .await?
-                .explain(false, false)?
-                .show()
-                .await?;
-        }
+        assert_eq!(rewritten.schema().as_ref(), query_plan.schema().as_ref());
 
         let expected = concat_batches(
             &query_plan.schema().as_ref().clone().into(),
@@ -1097,37 +1159,42 @@ mod test {
             TestCase {
                 name: "example from paper",
                 base: "\
-                SELECT 
-                    l_orderkey, 
-                    o_custkey, 
+                SELECT
+                    l_orderkey,
+                    o_custkey,
                     l_partkey,
                     l_shipdate, o_orderdate,
                     l_quantity*l_extendedprice AS gross_revenue
                 FROM example
                 WHERE
-                    l_orderkey = o_orderkey AND 
-                    l_partkey = p_partkey AND 
-                    p_partkey >= 150 AND 
-                    o_custkey >= 50 AND 
-                    o_custkey <= 500 AND 
+                    l_orderkey = o_orderkey AND
+                    l_partkey = p_partkey AND
+                    p_partkey >= 150 AND
+                    o_custkey >= 50 AND
+                    o_custkey <= 500 AND
                     p_name LIKE '%abc%'
                 ",
-                query: "SELECT 
-                    l_orderkey, 
-                    o_custkey, 
+                query: "SELECT
+                    l_orderkey,
+                    o_custkey,
                     l_partkey,
                     l_quantity*l_extendedprice
                 FROM example
-                WHERE 
+                WHERE
                     l_orderkey = o_orderkey AND
                     l_partkey = p_partkey AND
-                    l_partkey >= 150 AND 
+                    l_partkey >= 150 AND
                     l_partkey <= 160 AND
                     o_custkey = 123 AND
                     o_orderdate = l_shipdate AND
                     p_name like '%abc%' AND
                     l_quantity*l_extendedprice > 100
                 ",
+            },
+            TestCase {
+                name: "naked table scan with pushed down filters",
+                base: "SELECT column1 FROM t1 WHERE column2 <= 3",
+                query: "SELECT column1 FROM t1 WHERE column2 <= 3",
             },
         ];
 
