@@ -28,25 +28,26 @@ keywords = ["arrow", "arrow-rs", "datafusion"]
 rust-version = "1.80"
 
 [dependencies]
-arrow = { version = "54.1.0" }
-arrow-schema = { version = "54.1.0" }
+
+arrow = { version = "55.0.0" }
+arrow-schema = { version = "55.0.0" }
 async-trait = "0.1"
 chrono = "= 0.4.40"
 dashmap = "6"
-datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
-datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
+datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-functions = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-functions-aggregate = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-optimizer = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-physical-expr = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-physical-plan = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
+datafusion-sql = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "a13a6fe" }
 futures = "0.3"
-itertools = "0.13"
+itertools = "0.14"
 log = "0.4"
-object_store = "0.11"
-ordered-float = "4.6.0"
+object_store = "0.12"
+ordered-float = "5.0.0"
 
 [dev-dependencies]
 anyhow = "1.0.95"

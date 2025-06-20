@@ -110,14 +110,14 @@ impl TableFunctionImpl for FileDependenciesUdtf {
             "mv_dependencies: table '{table_name} is not a materialized view. (Materialized TableProviders must be registered using register_materialized"),
         ))?;
 
-        Ok(Arc::new(ViewTable::try_new(
+        Ok(Arc::new(ViewTable::new(
             mv_dependencies_plan(
                 mv,
                 self.row_metadata_registry.as_ref(),
                 &self.config_options,
             )?,
             None,
-        )?))
+        )))
     }
 }
 
@@ -224,7 +224,7 @@ impl TableFunctionImpl for StaleFilesUdtf {
                 ])?
                 .build()?;
 
-        Ok(Arc::new(ViewTable::try_new(logical_plan, None)?))
+        Ok(Arc::new(ViewTable::new(logical_plan, None)))
     }
 }
 
