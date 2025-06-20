@@ -31,7 +31,7 @@ rust-version = "1.80"
 arrow = { version = "54.1.0" }
 arrow-schema = { version = "54.1.0" }
 async-trait = "0.1"
-chrono = "= 0.4.39"
+chrono = "= 0.4.40"
 dashmap = "6"
 datafusion = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
 datafusion-common = { git = "https://github.com/polygon-io/arrow-datafusion", rev = "1c92803" }
