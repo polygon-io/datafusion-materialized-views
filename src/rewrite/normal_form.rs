@@ -1194,7 +1194,7 @@ mod test {
             TestCase {
                 name: "naked table scan with pushed down filters",
                 base: "SELECT column1 FROM t1 WHERE column2 <= 3",
-                query: "SELECT column1 FROM t1 WHERE column2 <= 3",
+                query: "SELECT FROM t1 WHERE column2 <= 3",
             },
         ];
 
