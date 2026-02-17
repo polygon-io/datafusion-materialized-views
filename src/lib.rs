@@ -49,12 +49,18 @@ pub mod rewrite;
 pub struct MaterializedConfig {
     /// Whether or not query rewriting should exploit this materialized view.
     pub use_in_query_rewrite: bool,
+    /// Optional candidate materialized views for query rewriting.
+    /// When specified, only these MVs will be considered as rewrite candidates.
+    /// These should be full table names (e.g., atlas.us_stocks_sip.trades_by_ticker).
+    /// If None, all eligible MVs are considered. If Some(vec![]), no MVs are considered.
+    pub rewrite_targets: Option<Vec<String>>,
 }
 
 impl Default for MaterializedConfig {
     fn default() -> Self {
         Self {
             use_in_query_rewrite: true,
+            rewrite_targets: None,
         }
     }
 }
