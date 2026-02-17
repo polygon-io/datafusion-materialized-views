@@ -45,14 +45,69 @@ pub mod materialized;
 pub mod rewrite;
 
 /// Configuration options for materialized view related features.
+///
+/// # Materialized View Configuration
+///
+/// Query rewriting uses two configuration options that work together:
+///
+/// 1. **`use_in_query_rewrite` (on candidate MVs)**: Controls whether an MV is globally available
+///    for query rewriting. MVs with `use_in_query_rewrite = false` are excluded from the
+///    candidate pool entirely.
+///
+/// 2. **`rewrite_targets` (on queried tables)**: When querying a table, this field filters which
+///    MVs from the available pool should be considered as rewrite candidates for that specific table.
+///
+/// The interaction works as follows:
+/// - First, `use_in_query_rewrite` determines the global pool of available MVs
+/// - Then, `rewrite_targets` on the queried table filters that pool for that specific query
+/// - An MV must have `use_in_query_rewrite = true` **and** be in the `rewrite_targets` list
+///   (or the list must be None) to be considered
+///
+/// # Example
+///
+/// ```ignore
+/// // MV1: available for query rewriting
+/// let mv1_config = MaterializedConfig {
+///     use_in_query_rewrite: true,  // MV1 is in the global pool
+///     rewrite_targets: None,
+/// };
+///
+/// // MV2: not available for query rewriting
+/// let mv2_config = MaterializedConfig {
+///     use_in_query_rewrite: false, // MV2 is excluded from the pool
+///     rewrite_targets: None,
+/// };
+///
+/// // Base table: only considers MV1 for rewrites
+/// let base_config = MaterializedConfig {
+///     use_in_query_rewrite: true,
+///     rewrite_targets: Some(vec!["mv1".to_string()]), // Only MV1 is considered
+/// };
+/// // When querying base_table:
+/// // - MV1 will be considered (in pool + in targets list)
+/// // - MV2 will NOT be considered (not in pool, even if added to targets list)
+/// ```
 #[derive(Debug, Clone)]
 pub struct MaterializedConfig {
-    /// Whether or not query rewriting should exploit this materialized view.
+    /// Whether or not this materialized view is available for query rewriting.
+    ///
+    /// If `false`, this MV will not be loaded into the query rewrite engine and cannot be used
+    /// as a rewrite candidate, regardless of any `rewrite_targets` settings on other tables.
     pub use_in_query_rewrite: bool,
+
     /// Optional candidate materialized views for query rewriting.
-    /// When specified, only these MVs will be considered as rewrite candidates.
-    /// These should be full table names (e.g., atlas.us_stocks_sip.trades_by_ticker).
-    /// If None, all eligible MVs are considered. If Some(vec![]), no MVs are considered.
+    ///
+    /// When this table is queried, only the MVs listed here will be considered as rewrite candidates.
+    /// These should be full table names (e.g., `atlas.us_stocks_sip.trades_by_ticker`).
+    ///
+    /// - If `None` (default): all eligible MVs in the catalog (where `use_in_query_rewrite = true`)
+    ///   are considered as rewrite candidates
+    /// - If `Some(vec![])`: no MVs are considered (effectively disables query rewriting for this table)
+    /// - If `Some(vec!["mv1", "mv2"])`: only mv1 and mv2 (if they have `use_in_query_rewrite = true`)
+    ///   are considered as rewrite candidates
+    ///
+    /// Note: This field is typically set on the **queried table** (which may itself be an MV).
+    /// It acts as a whitelist that further filters the pool of available MVs for queries against this table.
     pub rewrite_targets: Option<Vec<String>>,
 }
 
