@@ -32,7 +32,9 @@ use datafusion::{
     },
     prelude::{SessionConfig, SessionContext},
 };
-use datafusion_common::{Constraints, DataFusionError, ParamValues, ScalarValue, Statistics};
+use datafusion_common::{
+    metadata::ScalarAndMetadata, Constraints, DataFusionError, ParamValues, ScalarValue, Statistics,
+};
 use datafusion_expr::{
     col, dml::InsertOp, Expr, JoinType, LogicalPlan, LogicalPlanBuilder, SortExpr,
     TableProviderFilterPushDown, TableType,
@@ -185,7 +187,7 @@ async fn setup() -> Result<TestContext> {
     .await?;
 
     ctx.sql(
-        "INSERT INTO t1 VALUES 
+        "INSERT INTO t1 VALUES
         (1, '2023-01-01', 'A'),
         (2, '2023-01-02', 'B'),
         (3, '2023-01-03', 'C'),
@@ -251,7 +253,7 @@ async fn test_materialized_listing_table_incremental_maintenance() -> Result<()>
 
     // Insert another row into the source table
     ctx.sql(
-        "INSERT INTO t1 VALUES 
+        "INSERT INTO t1 VALUES
         (7, '2024-12-07', 'W')",
     )
     .await?
@@ -352,12 +354,13 @@ impl MaterializedListingTable {
             file_sort_order: opts.file_sort_order,
         });
 
+        let mut listing_table_config = ListingTableConfig::new(config.table_path);
+        if let Some(options) = options {
+            listing_table_config = listing_table_config.with_listing_options(options);
+        }
+        listing_table_config = listing_table_config.with_schema(Arc::new(file_schema));
         Ok(MaterializedListingTable {
-            inner: ListingTable::try_new(ListingTableConfig {
-                table_paths: vec![config.table_path],
-                file_schema: Some(Arc::new(file_schema)),
-                options,
-            })?,
+            inner: ListingTable::try_new(listing_table_config)?,
             query: normalized_query,
             schema: normalized_schema,
         })
@@ -549,7 +552,7 @@ impl TableProvider for MaterializedListingTable {
 fn parse_partition_values(
     path: &ObjectPath,
     partition_columns: &[(String, DataType)],
-) -> Result<Vec<ScalarValue>, DataFusionError> {
+) -> Result<Vec<ScalarAndMetadata>, DataFusionError> {
     let parts = path.parts().map(|part| part.to_owned()).collect::<Vec<_>>();
 
     let pairs = parts
@@ -561,7 +564,7 @@ fn parse_partition_values(
         .iter()
         .map(|(column, datatype)| {
             let value = pairs.get(column.as_str()).copied().map(String::from);
-            ScalarValue::Utf8(value).cast_to(datatype)
+            ScalarAndMetadata::from(ScalarValue::Utf8(value)).cast_storage_to(datatype)
         })
         .collect::<Result<Vec<_>, _>>()?;
 

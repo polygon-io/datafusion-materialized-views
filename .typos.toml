@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[toolchain]
-channel = "1.91.0"
-components = ["rust-analyzer", "rustfmt", "clippy"]
+# typos configuration file
+# Place this file in the project root (same level as Cargo.toml)
+[files]
+extend-exclude = ["Cargo.toml", "**/Cargo.toml"]

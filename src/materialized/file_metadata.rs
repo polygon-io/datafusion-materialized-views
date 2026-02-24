@@ -17,8 +17,9 @@
 
 use arrow::array::{StringBuilder, TimestampNanosecondBuilder, UInt64Builder};
 use arrow::record_batch::RecordBatch;
-use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
+use arrow_schema::{DataType, Field, TimeUnit};
 use async_trait::async_trait;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::catalog::SchemaProvider;
 use datafusion::catalog::{CatalogProvider, Session};
 use datafusion::datasource::listing::ListingTableUrl;
@@ -35,7 +36,7 @@ use datafusion::physical_plan::{
 use datafusion::{
     catalog::CatalogProviderList, execution::TaskContext, physical_plan::SendableRecordBatchStream,
 };
-use datafusion_common::{DataFusionError, Result, ScalarValue, ToDFSchema};
+use datafusion_common::{DFSchema, DataFusionError, Result, ScalarValue};
 use datafusion_expr::{Expr, Operator, TableProviderFilterPushDown, TableType};
 use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
 use futures::stream::{self, BoxStream};
@@ -103,7 +104,7 @@ impl TableProvider for FileMetadata {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let dfschema = self.table_schema.clone().to_dfschema()?;
+        let dfschema = DFSchema::try_from(self.table_schema.as_ref().clone())?;
 
         let filters = filters
             .iter()
@@ -226,7 +227,7 @@ impl ExecutionPlan for FileMetadataExec {
                     .map(|record_batch| {
                         record_batch
                             .project(&projection)
-                            .map_err(|e| DataFusionError::ArrowError(e, None))
+                            .map_err(|e| DataFusionError::ArrowError(Box::new(e), None))
                     })
                     .collect::<Vec<_>>();
             }
@@ -858,7 +859,7 @@ mod test {
         .await?;
 
         ctx.sql(
-            "INSERT INTO t1 VALUES 
+            "INSERT INTO t1 VALUES
             (1, '2021'),
             (2, '2022'),
             (3, '2023'),
@@ -882,7 +883,7 @@ mod test {
         .await?;
 
         ctx.sql(
-            "INSERT INTO private.t1 VALUES 
+            "INSERT INTO private.t1 VALUES
             (1, '2021', '01'),
             (2, '2022', '02'),
             (3, '2023', '03'),
@@ -906,7 +907,7 @@ mod test {
         .await?;
 
         ctx.sql(
-            "INSERT INTO datafusion_mv.public.t3 VALUES 
+            "INSERT INTO datafusion_mv.public.t3 VALUES
             (1, '2021-01-01'),
             (2, '2022-02-02'),
             (3, '2023-03-03'),
@@ -929,8 +930,8 @@ mod test {
         ctx.sql(
             // Remove timestamps and trim (randomly generated) file names since they're not stable in tests
             "CREATE VIEW file_metadata_test_view AS SELECT
-                * EXCLUDE(file_path, last_modified), 
-                regexp_replace(file_path, '/[^/]*$', '/') AS file_path 
+                * EXCLUDE(file_path, last_modified),
+                regexp_replace(file_path, '/[^/]*$', '/') AS file_path
             FROM file_metadata",
         )
         .await
