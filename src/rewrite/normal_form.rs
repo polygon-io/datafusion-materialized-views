@@ -1404,9 +1404,9 @@ mod test {
             name VARCHAR
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         ctx.sql("INSERT INTO bool_test VALUES (1, true, 'a'), (2, false, 'b')")
             .await?
@@ -1476,7 +1476,7 @@ mod test {
 
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_boolean_column_normalization() -> Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -1490,9 +1490,9 @@ mod test {
             name VARCHAR
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         // Test: MV with "active = false" should match query with "NOT active"
         let mv_plan = ctx
@@ -1540,9 +1540,9 @@ mod test {
             enabled BOOLEAN
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         // Test: MV with "enabled = true" should match query with just "enabled"
         let mv_plan = ctx
@@ -1576,5 +1576,4 @@ mod test {
 
         Ok(())
     }
-
 }
