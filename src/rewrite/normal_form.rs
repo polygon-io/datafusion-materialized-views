@@ -1583,9 +1583,9 @@ mod test {
                 col_d DOUBLE
             )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         // View uses col_b in the residual filter
         let base = "\
@@ -1653,9 +1653,9 @@ mod test {
                 label VARCHAR
             )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         // View: id1 = id2 equivalence, residual `id2 > value` and `label LIKE '%x%'`
         let base = "\
@@ -1698,7 +1698,8 @@ mod test {
 
         // The shared residual `id > value` must NOT appear as a compensating filter
         assert!(
-            !plan_str.contains("> mv2.value") || plan_str.matches("> mv2.value").count() == 0
+            !plan_str.contains("> mv2.value")
+                || plan_str.matches("> mv2.value").count() == 0
                 || !plan_str.contains("id1 > value"),
             "Rewritten plan should not duplicate the view's residual filter.\n\
              Plan:\n{plan_str}"
@@ -1739,9 +1740,9 @@ mod test {
             total_spend DOUBLE
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         // base: the external view SQL — aliased projection, no filter
         let base = "SELECT aggregate_name AS name, \
@@ -1804,9 +1805,9 @@ mod test {
             total_spend DOUBLE
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         let base = "SELECT aggregate_name AS name, \
                        txn_date AS transaction_date, \
@@ -1861,9 +1862,9 @@ mod test {
             total_spend DOUBLE
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         let base = "SELECT aggregate_name AS name, \
                        txn_currency AS transaction_currency, \
@@ -1924,9 +1925,9 @@ mod test {
             total_spend DOUBLE
         )",
         )
-            .await?
-            .collect()
-            .await?;
+        .await?
+        .collect()
+        .await?;
 
         let base = "SELECT aggregate_name AS name, \
                        txn_date AS transaction_date, \
