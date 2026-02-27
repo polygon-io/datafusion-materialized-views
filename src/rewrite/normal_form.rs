@@ -1531,7 +1531,6 @@ mod test {
     ///   - query: same table + alias, but with a filter on the raw column
     ///   - mv: materialized from `base`
     ///   - rewrite_from maps `query` onto `mv`
-
     /// Test 1: Equality filter on an aliased column.
     ///
     /// base:  SELECT aggregate_name AS name, txn_date AS transaction_date FROM merchants
