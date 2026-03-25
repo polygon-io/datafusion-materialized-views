@@ -1830,20 +1830,32 @@ mod test {
                 SELECT year, column1 AS column2 FROM t3
                 ",
                 projection: &["year"],
+                // In DF 52.4, the plan for coalesce changed due to apache/datafusion#20879
+                // ("Ensure columns are casted to the correct names with Unions").
+                // Previously, `coerce_exprs_for_schema` would alias any cast expression
+                // with the original column name, which kept `coalesce(CAST(...), t2.year)`
+                // as a single opaque expression. After the fix, only bare `Expr::Column`
+                // references get an alias on cast, so the inner `CAST(t1.year AS Utf8View)`
+                // is now visible to the optimizer. This triggers:
+                //   1. CSE (common subexpression elimination) extracts the shared
+                //      `CAST(t1.year AS Utf8View)` (used in both coalesce and join condition)
+                //      into `__common_expr_2`.
+                //   2. `coalesce(a, b)` is expanded to `CASE WHEN a IS NOT NULL THEN a ELSE b END`.
                 expected_plan: vec![
-                    "+--------------+--------------------------------------------------------------------+",
-                    "| plan_type    | plan                                                               |",
-                    "+--------------+--------------------------------------------------------------------+",
-                    "| logical_plan | Union                                                              |",
-                    "|              |   Projection: coalesce(CAST(t1.year AS Utf8View), t2.year) AS year |",
-                    "|              |     Full Join: Using CAST(t1.year AS Utf8View) = t2.year           |",
-                    "|              |       SubqueryAlias: t1                                            |",
-                    "|              |         Projection: t1.column1 AS year                             |",
-                    "|              |           TableScan: t1 projection=[column1]                       |",
-                    "|              |       SubqueryAlias: t2                                            |",
-                    "|              |         TableScan: t2 projection=[year]                            |",
-                    "|              |   TableScan: t3 projection=[year]                                  |",
-                    "+--------------+--------------------------------------------------------------------+",
+                    "+--------------+---------------------------------------------------------------------------------------------------+",
+                    "| plan_type    | plan                                                                                              |",
+                    "+--------------+---------------------------------------------------------------------------------------------------+",
+                    "| logical_plan | Union                                                                                             |",
+                    "|              |   Projection: CASE WHEN __common_expr_2 IS NOT NULL THEN __common_expr_2 ELSE t2.year END AS year |",
+                    "|              |     Projection: CAST(t1.year AS Utf8View) AS __common_expr_2, t2.year                             |",
+                    "|              |       Full Join: Using CAST(t1.year AS Utf8View) = t2.year                                        |",
+                    "|              |         SubqueryAlias: t1                                                                         |",
+                    "|              |           Projection: t1.column1 AS year                                                          |",
+                    "|              |             TableScan: t1 projection=[column1]                                                    |",
+                    "|              |         SubqueryAlias: t2                                                                         |",
+                    "|              |           TableScan: t2 projection=[year]                                                         |",
+                    "|              |   TableScan: t3 projection=[year]                                                                 |",
+                    "+--------------+---------------------------------------------------------------------------------------------------+",
                 ],
                 expected_output: vec![
                     "+------+",
