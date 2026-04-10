@@ -33,15 +33,15 @@ arrow = "57.0.0"
 arrow-schema = "57.0.0"
 async-trait = "0.1.89"
 dashmap = "6"
-datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
-datafusion-sql = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6d2c1cf" }
+datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
+datafusion-sql = { git = "https://github.com/massive-com/arrow-datafusion", rev = "939ab619" }
 futures = "0.3"
 itertools = "0.14"
 log = "0.4"
