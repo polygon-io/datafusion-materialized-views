@@ -1145,6 +1145,33 @@ mod test {
         .await?;
 
         ctx.sql(
+            "CREATE TABLE t4 (
+                year_month STRING,
+                column2 INTEGER
+            ) AS VALUES
+            ('2023-01', 1),
+            ('2023-01', 2),
+            ('2024-12', 4),
+            ('2024-12', 5)",
+        )
+        .await?
+        .collect()
+        .await?;
+
+        ctx.sql(
+            "CREATE TABLE t5 (
+                year_month STRING,
+                column2 INTEGER
+            ) AS VALUES
+            ('2023-01', 10),
+            ('2023-06', 20),
+            ('2024-12', 30)",
+        )
+        .await?
+        .collect()
+        .await?;
+
+        ctx.sql(
             // create a fake file metadata table to use as a mock
             "CREATE TABLE file_metadata (
                 table_catalog STRING,
@@ -1164,7 +1191,12 @@ mod test {
                 ('datafusion', 'test', 't2', 's3://t2/year=2024/month=12/day=05/feed=Y/data.01.parquet', '2023-07-11T16:45:22Z', 0),
                 ('datafusion', 'test', 't2', 's3://t2/year=2024/month=12/day=06/feed=Z/data.01.parquet', '2023-07-11T16:45:44Z', 0),
                 ('datafusion', 'test', 't3', 's3://t3/year=2023/data.01.parquet', '2023-07-11T16:45:44Z', 0),
-                ('datafusion', 'test', 't3', 's3://t3/year=2024/data.01.parquet', '2023-07-11T16:45:44Z', 0)
+                ('datafusion', 'test', 't3', 's3://t3/year=2024/data.01.parquet', '2023-07-11T16:45:44Z', 0),
+                ('datafusion', 'test', 't4', 's3://t4/year_month=2023-01/data.01.parquet', '2023-07-11T16:29:26Z', 0),
+                ('datafusion', 'test', 't4', 's3://t4/year_month=2024-12/data.01.parquet', '2023-07-11T16:45:44Z', 0),
+                ('datafusion', 'test', 't5', 's3://t5/year_month=2023-01/data.01.parquet', '2023-07-11T16:29:26Z', 0),
+                ('datafusion', 'test', 't5', 's3://t5/year_month=2023-06/data.01.parquet', '2023-07-11T16:45:22Z', 0),
+                ('datafusion', 'test', 't5', 's3://t5/year_month=2024-12/data.01.parquet', '2023-07-11T16:45:44Z', 0)
             "
         )
         .await?
@@ -1523,6 +1555,45 @@ mod test {
                     "| s3://m4/year=2023/ | 2023-07-12T16:00:00  | 2023-07-11T16:45:44   | false    |",
                     "| s3://m4/year=2024/ | 2023-07-12T16:00:00  | 2023-07-11T16:45:44   | false    |",
                     "+--------------------+----------------------+-----------------------+----------+",
+                ],
+                ..Default::default()
+            },
+            TestCase {
+                name: "union of two tables with the same partition column",
+                query_to_analyze: "
+                    SELECT year_month, column2 FROM t4
+                    UNION ALL
+                    SELECT year_month, column2 FROM t5
+                ",
+                table_name: "m_union",
+                table_path: "s3://m_union/",
+                partition_cols: vec!["year_month"],
+                file_extension: ".parquet",
+                expected_output: vec![
+                    "+----------------------------------+----------------------+---------------------+-------------------+--------------------------------------------+----------------------+",
+                    "| target                           | source_table_catalog | source_table_schema | source_table_name | source_uri                                 | source_last_modified |",
+                    "+----------------------------------+----------------------+---------------------+-------------------+--------------------------------------------+----------------------+",
+                    "| s3://m_union/year_month=2023-01/ | datafusion           | test                | t4                | s3://t4/year_month=2023-01/data.01.parquet | 2023-07-11T16:29:26  |",
+                    "| s3://m_union/year_month=2023-01/ | datafusion           | test                | t5                | s3://t5/year_month=2023-01/data.01.parquet | 2023-07-11T16:29:26  |",
+                    "| s3://m_union/year_month=2023-06/ | datafusion           | test                | t5                | s3://t5/year_month=2023-06/data.01.parquet | 2023-07-11T16:45:22  |",
+                    "| s3://m_union/year_month=2024-12/ | datafusion           | test                | t4                | s3://t4/year_month=2024-12/data.01.parquet | 2023-07-11T16:45:44  |",
+                    "| s3://m_union/year_month=2024-12/ | datafusion           | test                | t5                | s3://t5/year_month=2024-12/data.01.parquet | 2023-07-11T16:45:44  |",
+                    "+----------------------------------+----------------------+---------------------+-------------------+--------------------------------------------+----------------------+",
+                ],
+                // 2023-01 and 2024-12 are fresh; 2023-06 (only in t5) is stale
+                file_metadata: "
+                    ('datafusion', 'test', 'm_union', 's3://m_union/year_month=2023-01/data.01.parquet', '2023-07-12T16:00:00Z', 0),
+                    ('datafusion', 'test', 'm_union', 's3://m_union/year_month=2023-06/data.01.parquet', '2023-07-10T16:00:00Z', 0),
+                    ('datafusion', 'test', 'm_union', 's3://m_union/year_month=2024-12/data.01.parquet', '2023-07-12T16:00:00Z', 0)
+                ",
+                expected_stale_files_output: vec![
+                    "+----------------------------------+----------------------+-----------------------+----------+",
+                    "| target                           | target_last_modified | sources_last_modified | is_stale |",
+                    "+----------------------------------+----------------------+-----------------------+----------+",
+                    "| s3://m_union/year_month=2023-01/ | 2023-07-12T16:00:00  | 2023-07-11T16:29:26   | false    |",
+                    "| s3://m_union/year_month=2023-06/ | 2023-07-10T16:00:00  | 2023-07-11T16:45:22   | true     |",
+                    "| s3://m_union/year_month=2024-12/ | 2023-07-12T16:00:00  | 2023-07-11T16:45:44   | false    |",
+                    "+----------------------------------+----------------------+-----------------------+----------+",
                 ],
                 ..Default::default()
             },
