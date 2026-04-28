@@ -60,3 +60,8 @@ url = "2.5.4"
 name = "materialized_views_benchmark"
 harness = false
 path = "benches/materialized_views_benchmark.rs"
+
+[[bench]]
+name = "oneofexec_optimizer_benchmark"
+harness = false
+path = "benches/oneofexec_optimizer_benchmark.rs"
