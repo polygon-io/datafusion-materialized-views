@@ -42,13 +42,13 @@ use datafusion::{
     catalog::{CatalogProviderList, TableFunctionImpl},
     config::{CatalogOptions, ConfigOptions},
     datasource::{provider_as_source, TableProvider, ViewTable},
-    prelude::{flatten, get_field, make_array},
+    prelude::{flatten, make_array},
 };
 use datafusion_common::{
     alias::AliasGenerator,
     internal_err,
     tree_node::{Transformed, TreeNode},
-    DFSchema, DataFusionError, Result, ScalarValue,
+    Column as DFColumn, DFSchema, DataFusionError, Result, ScalarValue,
 };
 use datafusion_expr::{
     col, lit, utils::split_conjunction, Expr, LogicalPlan, LogicalPlanBuilder, TableScan,
@@ -400,17 +400,25 @@ pub fn mv_dependencies_plan(
         .into_iter()
         .find(|c| c.name.starts_with(META_COLUMN))
         .ok_or_else(|| DataFusionError::Plan(format!("Plan contains no {META_COLUMN} column")))?;
-    let files_col = Expr::Column(files.clone());
+    let meta_table_catalog =
+        Expr::Column(DFColumn::from_name(format!("{}.table_catalog", files.name)));
+    let meta_table_schema =
+        Expr::Column(DFColumn::from_name(format!("{}.table_schema", files.name)));
+    let meta_table_name = Expr::Column(DFColumn::from_name(format!("{}.table_name", files.name)));
+    let meta_source_uri = Expr::Column(DFColumn::from_name(format!("{}.source_uri", files.name)));
+    let meta_last_modified =
+        Expr::Column(DFColumn::from_name(format!("{}.last_modified", files.name)));
 
     LogicalPlanBuilder::from(pruned_plan_with_source_files)
+        .unnest_column(files.clone())?
         .unnest_column(files)?
         .project(vec![
             construct_target_path_from_static_partition_columns(materialized_view).alias("target"),
-            get_field(files_col.clone(), "table_catalog").alias("source_table_catalog"),
-            get_field(files_col.clone(), "table_schema").alias("source_table_schema"),
-            get_field(files_col.clone(), "table_name").alias("source_table_name"),
-            get_field(files_col.clone(), "source_uri").alias("source_uri"),
-            get_field(files_col.clone(), "last_modified").alias("source_last_modified"),
+            meta_table_catalog.alias("source_table_catalog"),
+            meta_table_schema.alias("source_table_schema"),
+            meta_table_name.alias("source_table_name"),
+            meta_source_uri.alias("source_uri"),
+            meta_last_modified.alias("source_last_modified"),
         ])?
         .distinct()?
         .build()
