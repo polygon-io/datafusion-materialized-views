@@ -43,7 +43,7 @@ use futures::stream::{self, BoxStream};
 use futures::{future, Future, FutureExt, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use log::debug;
-use object_store::{ObjectMeta, ObjectStore};
+use object_store::{ObjectMeta, ObjectStore, ObjectStoreExt};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -137,7 +137,7 @@ impl TableProvider for FileMetadata {
 /// An [`ExecutionPlan`] that scans object store metadata.
 pub struct FileMetadataExec {
     table_schema: SchemaRef,
-    plan_properties: PlanProperties,
+    plan_properties: Arc<PlanProperties>,
     projection: Option<Vec<usize>>,
     filters: Vec<Arc<dyn PhysicalExpr>>,
     limit: Option<usize>,
@@ -170,7 +170,7 @@ impl FileMetadataExec {
 
         let exec = Self {
             table_schema,
-            plan_properties,
+            plan_properties: Arc::new(plan_properties),
             projection,
             filters,
             limit,
@@ -192,7 +192,7 @@ impl ExecutionPlan for FileMetadataExec {
         "FileMetadataExec"
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.plan_properties
     }
 
