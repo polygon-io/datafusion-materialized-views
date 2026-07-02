@@ -33,15 +33,15 @@ arrow = "58.3.0"
 arrow-schema = "58.3.0"
 async-trait = "0.1.89"
 dashmap = "6"
-datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
-datafusion-sql = { git = "https://github.com/massive-com/arrow-datafusion", rev = "87fa8980744bcf27c3f890a283e4191f88894f60" }
+datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
+datafusion-sql = { git = "https://github.com/massive-com/arrow-datafusion", rev = "6e1549b55ba689ca4e6ab2be10724c8697f9c4a9" }
 futures = "0.3"
 itertools = "0.14"
 log = "0.4"

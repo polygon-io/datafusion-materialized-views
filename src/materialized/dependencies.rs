@@ -731,13 +731,12 @@ fn pushdown_projection_inexact(plan: LogicalPlan, indices: &HashSet<usize>) -> R
                         Ok::<_, DataFusionError>(v)
                     })?;
 
-            let columns_to_project = unnest
+            let original_columns_to_project = unnest
                 .schema
                 .columns()
                 .into_iter()
                 .enumerate()
                 .filter_map(|(i, c)| indices.contains(&i).then_some(c))
-                .map(Expr::Column)
                 .collect_vec();
 
             // GUARD: if after pushdown the set of relevant unnest columns is empty,
@@ -751,17 +750,48 @@ fn pushdown_projection_inexact(plan: LogicalPlan, indices: &HashSet<usize>) -> R
                     Arc::unwrap_or_clone(unnest.input),
                     &child_indices,
                 )?)
-                .project(columns_to_project)?
+                .project(
+                    original_columns_to_project
+                        .into_iter()
+                        .map(Expr::Column)
+                        .collect_vec(),
+                )?
                 .build();
             }
 
-            LogicalPlanBuilder::from(pushdown_projection_inexact(
+            let unnested = LogicalPlanBuilder::from(pushdown_projection_inexact(
                 Arc::unwrap_or_clone(unnest.input),
                 &child_indices,
             )?)
             .unnest_columns_with_options(columns_to_unnest, unnest.options)?
-            .project(columns_to_project)?
-            .build()
+            .build()?;
+
+            let unnested_columns = unnested.schema().columns();
+            let columns_to_project = original_columns_to_project
+                .into_iter()
+                .enumerate()
+                .map(|(i, original_column)| {
+                    let unnested_column = unnested_columns.get(i).ok_or_else(|| {
+                        DataFusionError::Internal(format!(
+                            "missing rebuilt unnest output column at index {i}"
+                        ))
+                    })?;
+
+                    let expr = Expr::Column(unnested_column.clone());
+                    Ok::<_, DataFusionError>(if unnested_column == &original_column {
+                        expr
+                    } else {
+                        expr.alias_qualified(
+                            original_column.relation.clone(),
+                            original_column.name.clone(),
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            LogicalPlanBuilder::from(unnested)
+                .project(columns_to_project)?
+                .build()
         }
 
         _ => internal_err!("Unsupported logical plan node: {}", plan.display()),
@@ -1071,7 +1101,7 @@ fn get_source_files_all_partitions(
 
 #[cfg(test)]
 mod test {
-    use std::{any::Any, collections::HashSet, sync::Arc};
+    use std::{collections::HashSet, sync::Arc};
 
     use arrow::util::pretty::pretty_format_batches;
     use arrow_schema::{DataType, Field, FieldRef, Fields, SchemaRef};
@@ -1109,10 +1139,6 @@ mod test {
 
     #[async_trait::async_trait]
     impl TableProvider for MockMaterializedView {
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
         fn schema(&self) -> SchemaRef {
             Arc::new(self.query.schema().as_arrow().clone())
         }
@@ -1165,10 +1191,6 @@ mod test {
 
     #[async_trait::async_trait]
     impl TableProvider for DecoratorTable {
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
         fn schema(&self) -> SchemaRef {
             self.inner.schema()
         }
@@ -1791,12 +1813,12 @@ mod test {
                     FROM t2",
                 projection: &["timestamp", "feed"],
                 expected_plan: vec![
-                    "+--------------+-------------------------------------------------------------------------------------------------------+",
-                    "| plan_type    | plan                                                                                                  |",
-                    "+--------------+-------------------------------------------------------------------------------------------------------+",
-                    "| logical_plan | Projection: to_timestamp_nanos(concat_ws(Utf8(\"-\"), t2.year, t2.month, t2.day)) AS timestamp, t2.feed |",
-                    "|              |   TableScan: t2 projection=[year, month, day, feed]                                                   |",
-                    "+--------------+-------------------------------------------------------------------------------------------------------+",
+                    "+--------------+-----------------------------------------------------------------------------------------------------------+",
+                    "| plan_type    | plan                                                                                                      |",
+                    "+--------------+-----------------------------------------------------------------------------------------------------------+",
+                    "| logical_plan | Projection: to_timestamp_nanos(concat_ws(Utf8View(\"-\"), t2.year, t2.month, t2.day)) AS timestamp, t2.feed |",
+                    "|              |   TableScan: t2 projection=[year, month, day, feed]                                                       |",
+                    "+--------------+-----------------------------------------------------------------------------------------------------------+",
                 ]
                 ,
                 expected_output: vec![
@@ -1897,9 +1919,9 @@ mod test {
                 name: "window & unnest",
                 query_to_analyze: "
                 SELECT
-                    \"__unnest_placeholder(date).year\" AS year,
-                    \"__unnest_placeholder(date).month\" AS month,
-                    \"__unnest_placeholder(date).day\" AS day,
+                    \"date.year\" AS year,
+                    \"date.month\" AS month,
+                    \"date.day\" AS day,
                     arr
                 FROM (
                     SELECT
