@@ -39,7 +39,7 @@ The transformation is complex, and we give a full walkthrough in the documentati
  */
 
 use datafusion::{
-    catalog::{CatalogProviderList, TableFunctionImpl},
+    catalog::{CatalogProviderList, TableFunctionArgs, TableFunctionImpl},
     config::{CatalogOptions, ConfigOptions},
     datasource::{provider_as_source, TableProvider, ViewTable},
     prelude::{flatten, make_array},
@@ -116,10 +116,8 @@ impl FileDependenciesUdtf {
             row_metadata_registry,
         }
     }
-}
 
-impl TableFunctionImpl for FileDependenciesUdtf {
-    fn call(&self, args: &[Expr]) -> Result<Arc<dyn TableProvider>> {
+    fn call_exprs(&self, args: &[Expr]) -> Result<Arc<dyn TableProvider>> {
         let table_name = get_table_name(args)?;
 
         let table_ref = TableReference::from(table_name).resolve(
@@ -142,6 +140,12 @@ impl TableFunctionImpl for FileDependenciesUdtf {
             )?,
             None,
         )))
+    }
+}
+
+impl TableFunctionImpl for FileDependenciesUdtf {
+    fn call_with_args(&self, args: TableFunctionArgs) -> Result<Arc<dyn TableProvider>> {
+        self.call_exprs(args.exprs())
     }
 }
 
@@ -177,13 +181,13 @@ struct StaleFilesUdtf {
 }
 
 impl TableFunctionImpl for StaleFilesUdtf {
-    fn call(&self, args: &[Expr]) -> Result<Arc<dyn TableProvider>> {
+    fn call_with_args(&self, args: TableFunctionArgs) -> Result<Arc<dyn TableProvider>> {
         use datafusion::prelude::*;
         use datafusion_functions_aggregate::min_max::max;
 
-        let dependencies = provider_as_source(self.mv_dependencies.call(args)?);
+        let dependencies = provider_as_source(self.mv_dependencies.call_exprs(args.exprs())?);
 
-        let table_name = get_table_name(args)?;
+        let table_name = get_table_name(args.exprs())?;
 
         let table_ref = TableReference::from(table_name).resolve(
             &self.mv_dependencies.config_options.catalog.default_catalog,

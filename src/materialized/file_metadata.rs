@@ -44,7 +44,6 @@ use futures::{future, Future, FutureExt, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use log::debug;
 use object_store::{ObjectMeta, ObjectStore, ObjectStoreExt};
-use std::any::Any;
 use std::sync::Arc;
 
 use crate::materialized::cast_to_listing_table;
@@ -85,10 +84,6 @@ impl FileMetadata {
 
 #[async_trait]
 impl TableProvider for FileMetadata {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.table_schema.clone()
     }
@@ -184,10 +179,6 @@ impl FileMetadataExec {
 }
 
 impl ExecutionPlan for FileMetadataExec {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         "FileMetadataExec"
     }
@@ -271,19 +262,19 @@ impl FileMetadataExec {
 
     /// Get the string literal value from an 'equals' BinaryExpr with a column.
     fn get_column_literal(column_idx: usize, filter: &Arc<dyn PhysicalExpr>) -> Option<String> {
-        let binary_expr = filter.as_any().downcast_ref::<BinaryExpr>()?;
+        let binary_expr = filter.as_ref().downcast_ref::<BinaryExpr>()?;
 
         if !matches!(binary_expr.op(), Operator::Eq) {
             return None;
         }
 
         let (column, literal) = if let Some(left_column) =
-            binary_expr.left().as_any().downcast_ref::<Column>()
+            binary_expr.left().as_ref().downcast_ref::<Column>()
         {
-            let right_literal = binary_expr.right().as_any().downcast_ref::<Literal>()?;
+            let right_literal = binary_expr.right().as_ref().downcast_ref::<Literal>()?;
             (left_column, right_literal)
-        } else if let Some(right_column) = binary_expr.right().as_any().downcast_ref::<Column>() {
-            let left_literal = binary_expr.left().as_any().downcast_ref::<Literal>()?;
+        } else if let Some(right_column) = binary_expr.right().as_ref().downcast_ref::<Column>() {
+            let left_literal = binary_expr.left().as_ref().downcast_ref::<Literal>()?;
             (right_column, left_literal)
         } else {
             return None;
