@@ -268,17 +268,15 @@ impl FileMetadataExec {
             return None;
         }
 
-        let (column, literal) = if let Some(left_column) =
-            binary_expr.left().as_ref().downcast_ref::<Column>()
-        {
-            let right_literal = binary_expr.right().as_ref().downcast_ref::<Literal>()?;
-            (left_column, right_literal)
-        } else if let Some(right_column) = binary_expr.right().as_ref().downcast_ref::<Column>() {
-            let left_literal = binary_expr.left().as_ref().downcast_ref::<Literal>()?;
-            (right_column, left_literal)
-        } else {
-            return None;
-        };
+        let (column, literal) =
+            if let Some(left_column) = binary_expr.left().as_ref().downcast_ref::<Column>() {
+                let right_literal = binary_expr.right().as_ref().downcast_ref::<Literal>()?;
+                (left_column, right_literal)
+            } else {
+                let right_column = binary_expr.right().as_ref().downcast_ref::<Column>()?;
+                let left_literal = binary_expr.left().as_ref().downcast_ref::<Literal>()?;
+                (right_column, left_literal)
+            };
 
         if column.index() != column_idx {
             return None;
