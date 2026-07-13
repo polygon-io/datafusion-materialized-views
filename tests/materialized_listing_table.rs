@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{any::Any, borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use arrow::{array::StringArray, compute::concat_batches, util::pretty};
@@ -393,7 +393,7 @@ async fn refresh_materialized_listing_table(
     let table = ctx.table_provider(table_name.clone()).await?;
 
     for target in &targets {
-        refresh_mv_target(ctx, table.as_any().downcast_ref().unwrap(), target).await?;
+        refresh_mv_target(ctx, table.downcast_ref().unwrap(), target).await?;
     }
 
     if ctx
@@ -486,10 +486,6 @@ impl MaterializedListingTable {
 
 #[async_trait::async_trait]
 impl TableProvider for MaterializedListingTable {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }
