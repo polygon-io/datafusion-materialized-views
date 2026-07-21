@@ -118,6 +118,20 @@ pub trait Materialized: ListingTableLike {
     fn static_partition_columns(&self) -> Vec<String> {
         <Self as ListingTableLike>::partition_columns(self)
     }
+
+    /// Current total number of files in this materialized view, ignoring any query
+    /// predicates. Used by cost functions to distinguish an unpopulated MV (which
+    /// should never win a rewrite — see X-2174 in the atlas repo) from a populated
+    /// MV whose files got pruned to zero by a rare-literal query predicate (which
+    /// SHOULD win — the file/row-group pruning proved absence without a scan; see
+    /// X-3269 for the /etf-global/v1/constituents?composite_ticker=MFSI case).
+    ///
+    /// Default is `None` — providers that can't cheaply report a total count fall
+    /// back to whatever discriminator the caller uses. Implementations that own an
+    /// eagerly-loaded file index should return `Some(index.total_files())`.
+    fn file_count(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// Register a [`Materialized`] implementation in this registry.
