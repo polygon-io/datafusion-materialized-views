@@ -100,6 +100,36 @@ pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTa
         })
 }
 
+/// Whether a materialized view is currently safe to route queries to. Reported
+/// by [`Materialized::rewrite_readiness`] and consulted by the
+/// [`ViewMatchingRewriter`](crate::rewrite::exploitation::ViewMatcher) so that
+/// unpopulated / in-flight MVs are excluded from the candidate set upstream of
+/// the cost function.
+///
+/// Keeping this a lifecycle abstraction (rather than a proxy such as file
+/// count) means the trait doesn't couple to any specific storage layout —
+/// providers describe their own readiness however they want (index loaded,
+/// snapshot published, migration complete, staleness threshold satisfied,
+/// etc.) and only report the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RewriteReadiness {
+    /// The MV is populated and can safely answer the query. The
+    /// `ViewMatchingRewriter` will include it as a rewrite candidate.
+    Ready,
+    /// The MV should not be used yet (index not loaded, ingest task never
+    /// ran after a version bump, snapshot rebuild in progress, etc.).
+    /// The `ViewMatchingRewriter` will drop the MV from the candidate set
+    /// so a query never gets routed to it and silently returns empty.
+    NotReady,
+    /// The provider cannot cheaply determine readiness. The
+    /// `ViewMatchingRewriter` treats this as "include as candidate" — the
+    /// cost function is responsible for whatever policy the caller wants
+    /// for unknown-lifecycle MVs. Default value returned by the trait's
+    /// blanket impl so backward-compatible providers keep the pre-existing
+    /// "always a candidate" behaviour.
+    Unknown,
+}
+
 /// A hive-partitioned table in object storage that is defined by a user-provided query.
 pub trait Materialized: ListingTableLike {
     /// The query that defines this materialized view.
@@ -119,21 +149,17 @@ pub trait Materialized: ListingTableLike {
         <Self as ListingTableLike>::partition_columns(self)
     }
 
-    /// Current total number of files in this materialized view, ignoring any query
-    /// predicates. Cost functions use this to distinguish two shapes that both
-    /// produce an empty physical plan:
+    /// Report whether this MV is currently safe to route queries to. See
+    /// [`RewriteReadiness`] for the semantics of each variant. Consulted by
+    /// [`ViewMatchingRewriter`](crate::rewrite::exploitation::ViewMatcher)
+    /// during LP rewrite; `NotReady` MVs are dropped from the candidate
+    /// set upstream of the cost function, so they never win a rewrite.
     ///
-    /// * an unpopulated MV (no files yet — should never win a rewrite, since
-    ///   routing a query to it silently returns wrong empty results), and
-    /// * a populated MV whose files were all pruned by min/max statistics on a
-    ///   rare-literal predicate (should win — pruning proved absence via metadata
-    ///   alone, versus scanning the base table).
-    ///
-    /// Default is `None` — providers that can't cheaply report a total count fall
-    /// back to whatever discriminator the caller uses. Implementations that own an
-    /// eagerly-loaded file index should return `Some(index.total_files())`.
-    fn file_count(&self) -> Option<usize> {
-        None
+    /// Default is `Unknown`, which means "include as candidate but the
+    /// cost function decides" — backward-compatible for providers that
+    /// don't distinguish lifecycle states.
+    fn rewrite_readiness(&self) -> RewriteReadiness {
+        RewriteReadiness::Unknown
     }
 }
 
@@ -293,5 +319,28 @@ impl TableTypeRegistry {
         self.decorator_accessors
             .get(&table_any.type_id())
             .and_then(|r| r.value().1(table_any))
+    }
+}
+
+#[cfg(test)]
+mod tests_readiness {
+    use super::RewriteReadiness;
+
+    #[test]
+    fn variants_are_distinct_and_comparable() {
+        assert_ne!(RewriteReadiness::Ready, RewriteReadiness::NotReady);
+        assert_ne!(RewriteReadiness::Ready, RewriteReadiness::Unknown);
+        assert_ne!(RewriteReadiness::NotReady, RewriteReadiness::Unknown);
+        assert_eq!(RewriteReadiness::Ready, RewriteReadiness::Ready);
+    }
+
+    #[test]
+    fn readiness_is_copy_and_hashable() {
+        // Ensure the variants can be stored / matched cheaply from the
+        // rewrite path without cloning.
+        fn requires_copy<T: Copy>() {}
+        fn requires_hash<T: std::hash::Hash>() {}
+        requires_copy::<RewriteReadiness>();
+        requires_hash::<RewriteReadiness>();
     }
 }
