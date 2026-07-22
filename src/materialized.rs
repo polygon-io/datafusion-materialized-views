@@ -101,10 +101,10 @@ pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTa
 }
 
 /// Whether a materialized view is currently safe to route queries to. Reported
-/// by [`Materialized::rewrite_readiness`] and consulted by the
-/// [`ViewMatchingRewriter`](crate::rewrite::exploitation::ViewMatcher) so that
-/// unpopulated / in-flight MVs are excluded from the candidate set upstream of
-/// the cost function.
+/// by [`Materialized::rewrite_readiness`] and consulted by
+/// [`ViewMatcher`](crate::rewrite::exploitation::ViewMatcher) during LP rewrite
+/// so that unpopulated / in-flight MVs are excluded from the candidate set
+/// upstream of the cost function.
 ///
 /// Keeping this a lifecycle abstraction (rather than a proxy such as file
 /// count) means the trait doesn't couple to any specific storage layout —
@@ -151,9 +151,9 @@ pub trait Materialized: ListingTableLike {
 
     /// Report whether this MV is currently safe to route queries to. See
     /// [`RewriteReadiness`] for the semantics of each variant. Consulted by
-    /// [`ViewMatchingRewriter`](crate::rewrite::exploitation::ViewMatcher)
-    /// during LP rewrite; `NotReady` MVs are dropped from the candidate
-    /// set upstream of the cost function, so they never win a rewrite.
+    /// [`ViewMatcher`](crate::rewrite::exploitation::ViewMatcher) during LP
+    /// rewrite; `NotReady` MVs are dropped from the candidate set upstream
+    /// of the cost function, so they never win a rewrite.
     ///
     /// Default is `Unknown`, which means "include as candidate but the
     /// cost function decides" — backward-compatible for providers that
