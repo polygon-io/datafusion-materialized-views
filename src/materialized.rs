@@ -120,11 +120,14 @@ pub trait Materialized: ListingTableLike {
     }
 
     /// Current total number of files in this materialized view, ignoring any query
-    /// predicates. Used by cost functions to distinguish an unpopulated MV (which
-    /// should never win a rewrite — see X-2174 in the atlas repo) from a populated
-    /// MV whose files got pruned to zero by a rare-literal query predicate (which
-    /// SHOULD win — the file/row-group pruning proved absence without a scan; see
-    /// X-3269 for the /etf-global/v1/constituents?composite_ticker=MFSI case).
+    /// predicates. Cost functions use this to distinguish two shapes that both
+    /// produce an empty physical plan:
+    ///
+    /// * an unpopulated MV (no files yet — should never win a rewrite, since
+    ///   routing a query to it silently returns wrong empty results), and
+    /// * a populated MV whose files were all pruned by min/max statistics on a
+    ///   rare-literal predicate (should win — pruning proved absence via metadata
+    ///   alone, versus scanning the base table).
     ///
     /// Default is `None` — providers that can't cheaply report a total count fall
     /// back to whatever discriminator the caller uses. Implementations that own an
