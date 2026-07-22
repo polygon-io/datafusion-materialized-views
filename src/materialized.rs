@@ -111,7 +111,7 @@ pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTa
 /// providers describe their own readiness however they want (index loaded,
 /// snapshot published, migration complete, staleness threshold satisfied,
 /// etc.) and only report the answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RewriteReadiness {
     /// The MV is populated and can safely answer the query. The
     /// `ViewMatchingRewriter` will include it as a rewrite candidate.
