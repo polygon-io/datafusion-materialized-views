@@ -37,11 +37,17 @@
 
 use std::sync::Arc;
 
+use datafusion::catalog::CatalogProviderList;
+use datafusion::execution::context::SessionState;
 use datafusion::execution::TaskContext;
 use datafusion::physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
 };
 use datafusion_common::{DataFusionError, Result, TableReference};
+
+use crate::materialized::cast_to_materialized;
+
+use super::exploitation::RewriteContext;
 
 /// Whether a materialized view is currently safe to route queries to. Reported
 /// by [`Materialized::rewrite_readiness`](crate::materialized::Materialized::rewrite_readiness)
@@ -273,6 +279,163 @@ pub fn readiness_from_plan(plan: &Arc<dyn ExecutionPlan>) -> Option<RewriteReadi
         }
     }
     None
+}
+
+/// Pair-wise filter that drops every `Materialized` candidate whose
+/// refreshed readiness is `NotReady`, along with its aligned entry in
+/// `physical_inputs`. Base is never filtered.
+///
+/// If `candidates` is empty or is not aligned with `physical_inputs`
+/// (older callsites that constructed the `OneOf` without per-branch
+/// metadata, or a caller that supplied a mismatched vector), the inputs
+/// are passed through unchanged and the metadata is dropped entirely —
+/// preserving a misaligned slice would let it flow into `OneOfExec` and
+/// attribute readiness to the wrong branch inside the cost function.
+/// Callsites without metadata keep their original behaviour (the empty
+/// slice is what the pre-readiness code path also carried).
+pub(super) fn drop_not_ready_after_refresh(
+    physical_inputs: &[Arc<dyn ExecutionPlan>],
+    candidates: &[CandidateMetadata],
+) -> (Vec<Arc<dyn ExecutionPlan>>, Vec<CandidateMetadata>) {
+    if candidates.len() != physical_inputs.len() {
+        return (physical_inputs.to_vec(), Vec::new());
+    }
+    let mut kept_inputs = Vec::with_capacity(physical_inputs.len());
+    let mut kept_candidates = Vec::with_capacity(candidates.len());
+    for (input, cand) in physical_inputs.iter().zip(candidates.iter()) {
+        let drop = matches!(
+            cand,
+            CandidateMetadata::Materialized {
+                readiness: RewriteReadiness::NotReady,
+                ..
+            }
+        );
+        if drop {
+            continue;
+        }
+        kept_inputs.push(Arc::clone(input));
+        kept_candidates.push(cand.clone());
+    }
+    (kept_inputs, kept_candidates)
+}
+
+/// Re-consult every `Materialized` candidate's `rewrite_readiness()` and
+/// return a `RewriteContext` whose metadata reflects the current values.
+///
+/// Called from `ViewExploitationPlanner::plan_extension` once
+/// physical inputs have been planned (i.e. after `TableProvider::scan()`
+/// has run on every candidate branch). Providers whose readiness only
+/// becomes definite after scan initialization (lazy indexes, warmup jobs,
+/// snapshot swaps that happen inside `scan`) surface their new value here
+/// so the cost function sees the definitive readiness rather than the
+/// stale LP-time snapshot.
+///
+/// For each `Materialized` candidate the refresh prefers the atomic
+/// readiness captured at scan time (via `ReadinessAnnotatedExec` in the
+/// candidate's `physical_input`) over racy re-sampling. Providers that
+/// haven't opted into the wrapper fall back to sampling the current
+/// `rewrite_readiness()` through the catalog — this is best-effort and
+/// can be stale under concurrent snapshot swaps (see `ReadinessAnnotatedExec`).
+///
+/// Lookup failures on the fallback path (table not found in the
+/// catalog, provider is no longer a `Materialized`, `cast_to_materialized`
+/// error) preserve the LP-time value — never downgrade what we already
+/// observed.
+pub(super) async fn refresh_candidate_readiness(
+    context: RewriteContext,
+    physical_inputs: &[Arc<dyn ExecutionPlan>],
+    session_state: &SessionState,
+) -> RewriteContext {
+    let catalog_list = session_state.catalog_list();
+    let default_catalog = &session_state.config().options().catalog.default_catalog;
+    let default_schema = &session_state.config().options().catalog.default_schema;
+
+    let candidates = context.candidates();
+    // Alignment-tolerant zipping: if a caller supplied metadata whose
+    // length differs from `physical_inputs`, we can't safely pair them,
+    // so we skip the annotated lookup for the misaligned indices. The
+    // downstream `drop_not_ready_after_refresh` filter handles the same
+    // case defensively.
+    let aligned = candidates.len() == physical_inputs.len();
+
+    let refreshed: Vec<CandidateMetadata> =
+        futures::future::join_all(candidates.iter().enumerate().map(|(idx, c)| async move {
+            match c {
+                CandidateMetadata::Base => CandidateMetadata::Base,
+                CandidateMetadata::Materialized {
+                    table_ref,
+                    readiness,
+                } => {
+                    // Prefer atomically-captured readiness from the physical
+                    // input over sampling — closes the race between the
+                    // snapshot scan read from and the current provider state.
+                    let annotated = if aligned {
+                        readiness_from_plan(&physical_inputs[idx])
+                    } else {
+                        None
+                    };
+
+                    let new_readiness = match annotated {
+                        Some(r) => r,
+                        None => resolve_current_readiness(
+                            catalog_list.as_ref(),
+                            default_catalog,
+                            default_schema,
+                            table_ref,
+                        )
+                        .await
+                        .unwrap_or(*readiness),
+                    };
+
+                    CandidateMetadata::Materialized {
+                        table_ref: table_ref.clone(),
+                        readiness: new_readiness,
+                    }
+                }
+            }
+        }))
+        .await;
+
+    context.with_candidates(refreshed)
+}
+
+/// Resolve `table_ref` through the catalog list and re-consult the
+/// provider's `rewrite_readiness()`. Returns `None` on any lookup failure
+/// so the caller can fall back to the LP-time value.
+async fn resolve_current_readiness(
+    catalog_list: &dyn CatalogProviderList,
+    default_catalog: &str,
+    default_schema: &str,
+    table_ref: &TableReference,
+) -> Option<RewriteReadiness> {
+    // Resolve the (possibly bare or partial) reference against the
+    // session's default catalog/schema without ever going through
+    // `Display`/`parse_str`, which is not lossless for quoted or dotted
+    // identifiers.
+    let resolved = table_ref.clone().resolve(default_catalog, default_schema);
+    let catalog = catalog_list.catalog(resolved.catalog.as_ref())?;
+    let schema = catalog.schema(resolved.schema.as_ref())?;
+    let table = match schema.table(resolved.table.as_ref()).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            log::trace!("refresh_candidate_readiness: no table {table_ref} in catalog");
+            return None;
+        }
+        Err(e) => {
+            log::warn!("refresh_candidate_readiness: catalog lookup failed for {table_ref}: {e}");
+            return None;
+        }
+    };
+    match cast_to_materialized(table.as_ref()) {
+        Ok(Some(mv)) => Some(mv.rewrite_readiness()),
+        Ok(None) => None,
+        Err(e) => {
+            log::warn!(
+                "refresh_candidate_readiness: cast_to_materialized failed for {table_ref}: {e}"
+            );
+            None
+        }
+    }
 }
 
 #[cfg(test)]
