@@ -111,6 +111,10 @@ pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTa
 /// providers describe their own readiness however they want (index loaded,
 /// snapshot published, migration complete, staleness threshold satisfied,
 /// etc.) and only report the answer.
+// `PartialOrd, Ord` are derived so `CandidateMetadata` (which stores a
+// `RewriteReadiness`) can keep its own `PartialOrd, Ord` derives. The
+// variant ordering has no lifecycle meaning — callers must not depend on
+// `Ready < NotReady < Unknown`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RewriteReadiness {
     /// The MV is populated and can safely answer the query. The
@@ -122,11 +126,14 @@ pub enum RewriteReadiness {
     /// so a query never gets routed to it and silently returns empty.
     NotReady,
     /// The provider cannot cheaply determine readiness. The
-    /// `ViewMatchingRewriter` treats this as "include as candidate" — the
-    /// cost function is responsible for whatever policy the caller wants
-    /// for unknown-lifecycle MVs. Default value returned by the trait's
-    /// blanket impl so backward-compatible providers keep the pre-existing
-    /// "always a candidate" behaviour.
+    /// `ViewMatchingRewriter` treats this as "include as candidate" and
+    /// propagates the `Unknown` value to the cost function via
+    /// `CandidateMetadata::Materialized { readiness, .. }`, so the caller
+    /// can pick whatever policy fits — e.g. fall back to the base scan
+    /// cost rather than trust an EmptyExec candidate as predicate-pruned.
+    /// Default value returned by the trait's blanket impl so
+    /// backward-compatible providers keep the pre-existing "always a
+    /// candidate" behaviour.
     Unknown,
 }
 
