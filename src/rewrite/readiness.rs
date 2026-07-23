@@ -61,9 +61,9 @@ use super::exploitation::RewriteContext;
 /// providers describe their own readiness however they want (index loaded,
 /// snapshot published, migration complete, staleness threshold satisfied,
 /// etc.) and only report the answer.
-// `PartialOrd, Ord` are derived so `CandidateMetadata` (which stores a
-// `RewriteReadiness`) can keep its own `PartialOrd, Ord` derives. The
-// variant ordering has no lifecycle meaning — callers must not depend on
+// `PartialOrd`/`Ord` are derived so types that embed `RewriteReadiness` (e.g.
+// candidate metadata) can derive ordering traits when needed. The variant
+// ordering has no lifecycle meaning — callers must not depend on
 // `Ready < NotReady < Unknown`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RewriteReadiness {
