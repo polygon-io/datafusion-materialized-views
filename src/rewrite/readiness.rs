@@ -43,6 +43,7 @@ use datafusion::execution::TaskContext;
 use datafusion::physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
 };
+use datafusion_common::tree_node::{Transformed, TreeNode};
 use datafusion_common::{DataFusionError, Result, TableReference};
 
 use crate::materialized::cast_to_materialized;
@@ -281,6 +282,29 @@ pub fn readiness_from_plan(plan: &Arc<dyn ExecutionPlan>) -> Option<RewriteReadi
     None
 }
 
+/// Remove every `ReadinessAnnotatedExec` from a physical plan tree and
+/// return the plan with each wrapper collapsed to its inner. Used by
+/// `ViewExploitationPlanner::plan_extension` after `readiness_from_plan`
+/// has extracted the annotation — the wrapper's job is done at that
+/// point and it shouldn't leak into the plan handed to downstream
+/// optimizers, cost functions, `OneOfExec`, or physical-plan codecs.
+///
+/// The wrapper is deliberately minimal (it only delegates `properties`,
+/// `execute`, and `partition_statistics`); leaving it in place would
+/// silently block optimizer passes such as limit pushdown, projection
+/// pushdown, or `with_preserve_order`, which look at
+/// `ExecutionPlan` trait methods we don't proxy.
+pub fn strip_readiness_annotation(plan: Arc<dyn ExecutionPlan>) -> Result<Arc<dyn ExecutionPlan>> {
+    plan.transform(&|node: Arc<dyn ExecutionPlan>| {
+        if let Some(annotated) = node.downcast_ref::<ReadinessAnnotatedExec>() {
+            Ok(Transformed::yes(Arc::clone(annotated.inner())))
+        } else {
+            Ok(Transformed::no(node))
+        }
+    })
+    .map(|t| t.data)
+}
+
 /// Pair-wise filter that drops every `Materialized` candidate whose
 /// refreshed readiness is `NotReady`, along with its aligned entry in
 /// `physical_inputs`. Base is never filtered.
@@ -476,5 +500,62 @@ mod tests {
         let children = annotated.children();
         assert_eq!(children.len(), 1);
         assert!(Arc::ptr_eq(children[0], &inner));
+    }
+
+    #[test]
+    fn strip_returns_inner_for_bare_annotated_exec() {
+        use arrow_schema::Schema;
+        use datafusion::physical_plan::empty::EmptyExec;
+        let schema = Arc::new(Schema::empty());
+        let inner: Arc<dyn ExecutionPlan> = Arc::new(EmptyExec::new(schema));
+        let annotated: Arc<dyn ExecutionPlan> = Arc::new(ReadinessAnnotatedExec::new(
+            Arc::clone(&inner),
+            RewriteReadiness::Ready,
+        ));
+
+        let stripped = strip_readiness_annotation(annotated).expect("strip");
+        assert!(
+            stripped.downcast_ref::<ReadinessAnnotatedExec>().is_none(),
+            "top-level wrapper must be gone after strip"
+        );
+        assert!(Arc::ptr_eq(&stripped, &inner));
+    }
+
+    #[test]
+    fn strip_replaces_annotated_exec_inside_nested_plan() {
+        // Providers wrap their scan output, but DataFusion may put a
+        // Filter/Projection/Repartition on top before `plan_extension` sees
+        // the plan. Strip must find the wrapper wherever it sits.
+        use arrow_schema::Schema;
+        use datafusion::physical_plan::empty::EmptyExec;
+        use datafusion::physical_plan::repartition::RepartitionExec;
+        use datafusion_physical_expr::Partitioning;
+        let schema = Arc::new(Schema::empty());
+        let leaf: Arc<dyn ExecutionPlan> = Arc::new(EmptyExec::new(schema));
+        let annotated: Arc<dyn ExecutionPlan> = Arc::new(ReadinessAnnotatedExec::new(
+            Arc::clone(&leaf),
+            RewriteReadiness::Ready,
+        ));
+        let wrapped: Arc<dyn ExecutionPlan> = Arc::new(
+            RepartitionExec::try_new(annotated, Partitioning::RoundRobinBatch(1))
+                .expect("repartition"),
+        );
+
+        let stripped = strip_readiness_annotation(wrapped).expect("strip");
+        assert!(
+            readiness_from_plan(&stripped).is_none(),
+            "no ReadinessAnnotatedExec should remain anywhere in the tree"
+        );
+    }
+
+    #[test]
+    fn strip_is_noop_when_no_annotation_present() {
+        use arrow_schema::Schema;
+        use datafusion::physical_plan::empty::EmptyExec;
+        let schema = Arc::new(Schema::empty());
+        let plan: Arc<dyn ExecutionPlan> = Arc::new(EmptyExec::new(schema));
+
+        let stripped = strip_readiness_annotation(Arc::clone(&plan)).expect("strip");
+        assert!(Arc::ptr_eq(&stripped, &plan));
     }
 }
