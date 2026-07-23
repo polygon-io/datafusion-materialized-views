@@ -100,42 +100,11 @@ pub fn cast_to_listing_table(table: &dyn TableProvider) -> Option<&dyn ListingTa
         })
 }
 
-/// Whether a materialized view is currently safe to route queries to. Reported
-/// by [`Materialized::rewrite_readiness`] and consulted by
-/// [`ViewMatcher`](crate::rewrite::exploitation::ViewMatcher) during LP rewrite
-/// so that unpopulated / in-flight MVs are excluded from the candidate set
-/// upstream of the cost function.
-///
-/// Keeping this a lifecycle abstraction (rather than a proxy such as file
-/// count) means the trait doesn't couple to any specific storage layout —
-/// providers describe their own readiness however they want (index loaded,
-/// snapshot published, migration complete, staleness threshold satisfied,
-/// etc.) and only report the answer.
-// `PartialOrd, Ord` are derived so `CandidateMetadata` (which stores a
-// `RewriteReadiness`) can keep its own `PartialOrd, Ord` derives. The
-// variant ordering has no lifecycle meaning — callers must not depend on
-// `Ready < NotReady < Unknown`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RewriteReadiness {
-    /// The MV is populated and can safely answer the query. The
-    /// `ViewMatchingRewriter` will include it as a rewrite candidate.
-    Ready,
-    /// The MV should not be used yet (index not loaded, ingest task never
-    /// ran after a version bump, snapshot rebuild in progress, etc.).
-    /// The `ViewMatchingRewriter` will drop the MV from the candidate set
-    /// so a query never gets routed to it and silently returns empty.
-    NotReady,
-    /// The provider cannot cheaply determine readiness. The
-    /// `ViewMatchingRewriter` treats this as "include as candidate" and
-    /// propagates the `Unknown` value to the cost function via
-    /// `CandidateMetadata::Materialized { readiness, .. }`, so the caller
-    /// can pick whatever policy fits — e.g. fall back to the base scan
-    /// cost rather than trust an EmptyExec candidate as predicate-pruned.
-    /// Default value returned by the trait's blanket impl so
-    /// backward-compatible providers keep the pre-existing "always a
-    /// candidate" behaviour.
-    Unknown,
-}
+// Re-exported for backward compatibility with downstream code that used
+// to import `RewriteReadiness` from `crate::materialized`. The enum
+// itself lives in `crate::rewrite::readiness` now (see PR #55 review),
+// so all readiness-related types are grouped in one file.
+pub use crate::rewrite::readiness::RewriteReadiness;
 
 /// A hive-partitioned table in object storage that is defined by a user-provided query.
 pub trait Materialized: ListingTableLike {
@@ -326,28 +295,5 @@ impl TableTypeRegistry {
         self.decorator_accessors
             .get(&table_any.type_id())
             .and_then(|r| r.value().1(table_any))
-    }
-}
-
-#[cfg(test)]
-mod tests_readiness {
-    use super::RewriteReadiness;
-
-    #[test]
-    fn variants_are_distinct_and_comparable() {
-        assert_ne!(RewriteReadiness::Ready, RewriteReadiness::NotReady);
-        assert_ne!(RewriteReadiness::Ready, RewriteReadiness::Unknown);
-        assert_ne!(RewriteReadiness::NotReady, RewriteReadiness::Unknown);
-        assert_eq!(RewriteReadiness::Ready, RewriteReadiness::Ready);
-    }
-
-    #[test]
-    fn readiness_is_copy_and_hashable() {
-        // Ensure the variants can be stored / matched cheaply from the
-        // rewrite path without cloning.
-        fn requires_copy<T: Copy>() {}
-        fn requires_hash<T: std::hash::Hash>() {}
-        requires_copy::<RewriteReadiness>();
-        requires_hash::<RewriteReadiness>();
     }
 }
