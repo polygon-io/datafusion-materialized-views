@@ -15,17 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[licenses]
-allow = [
-  "Apache-2.0",
-  "Apache-2.0 WITH LLVM-exception",
-  "MIT",
-  "BSD-2-Clause",
-  "BSD-3-Clause",
-  "CC0-1.0",
-  "Unicode-3.0",
-  "Zlib",
-  "ISC",
-  "bzip2-1.0.6"
-]
-version = 2
+# typos configuration file
+# Place this file in the project root (same level as Cargo.toml)
+[files]
+extend-exclude = ["Cargo.toml", "**/Cargo.toml"]
