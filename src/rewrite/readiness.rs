@@ -37,14 +37,14 @@
 
 use std::sync::Arc;
 
-use datafusion::catalog::CatalogProviderList;
-use datafusion::execution::context::SessionState;
+use datafusion::catalog::{CatalogProviderList, Session};
 use datafusion::execution::TaskContext;
 use datafusion::physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
+    ChildStats, ChildrenPropertiesMode, DisplayAs, DisplayFormatType, ExecutionPlan, PhysicalExpr,
+    PlanProperties, ReplaceChildrenOptions, SendableRecordBatchStream, StatisticsArgs,
 };
-use datafusion_common::tree_node::{Transformed, TreeNode};
-use datafusion_common::{DataFusionError, Result, TableReference};
+use datafusion_common::tree_node::{Transformed, TreeNode, TreeNodeRecursion};
+use datafusion_common::{DataFusionError, Result, Statistics, TableReference};
 
 use crate::materialized::cast_to_materialized;
 
@@ -233,9 +233,17 @@ impl ExecutionPlan for ReadinessAnnotatedExec {
         vec![&self.inner]
     }
 
-    fn with_new_children(
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> Result<TreeNodeRecursion>,
+    ) -> Result<TreeNodeRecursion> {
+        Ok(TreeNodeRecursion::Continue)
+    }
+
+    fn replace_children(
         self: Arc<Self>,
         children: Vec<Arc<dyn ExecutionPlan>>,
+        _options: ReplaceChildrenOptions,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         if children.len() != 1 {
             return Err(DataFusionError::Plan(format!(
@@ -243,10 +251,21 @@ impl ExecutionPlan for ReadinessAnnotatedExec {
                 children.len()
             )));
         }
+        let mut children = children;
         Ok(Arc::new(ReadinessAnnotatedExec::new(
-            children.into_iter().next().unwrap(),
+            children.swap_remove(0),
             self.readiness,
         )))
+    }
+
+    fn with_new_children(
+        self: Arc<Self>,
+        children: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        self.replace_children(
+            children,
+            ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
+        )
     }
 
     fn execute(
@@ -257,11 +276,16 @@ impl ExecutionPlan for ReadinessAnnotatedExec {
         self.inner.execute(partition, context)
     }
 
-    fn partition_statistics(
+    fn child_stats_requests(&self, partition: Option<usize>) -> Vec<ChildStats> {
+        vec![ChildStats::At(partition)]
+    }
+
+    fn statistics_from_inputs(
         &self,
-        partition: Option<usize>,
-    ) -> Result<Arc<datafusion_common::Statistics>> {
-        self.inner.partition_statistics(partition)
+        input_stats: &[Arc<Statistics>],
+        _args: &StatisticsArgs,
+    ) -> Result<Arc<Statistics>> {
+        Ok(Arc::clone(&input_stats[0]))
     }
 }
 
@@ -290,7 +314,7 @@ pub fn readiness_from_plan(plan: &Arc<dyn ExecutionPlan>) -> Option<RewriteReadi
 /// optimizers, cost functions, `OneOfExec`, or physical-plan codecs.
 ///
 /// The wrapper is deliberately minimal (it only delegates `properties`,
-/// `execute`, and `partition_statistics`); leaving it in place would
+/// `execute`, and statistics); leaving it in place would
 /// silently block optimizer passes such as limit pushdown, projection
 /// pushdown, or `with_preserve_order`, which look at
 /// `ExecutionPlan` trait methods we don't proxy.
@@ -368,11 +392,11 @@ pub(super) fn drop_not_ready_after_refresh(
 pub(super) async fn refresh_candidate_readiness(
     context: RewriteContext,
     physical_inputs: &[Arc<dyn ExecutionPlan>],
-    session_state: &SessionState,
+    session: &dyn Session,
 ) -> RewriteContext {
-    let catalog_list = session_state.catalog_list();
-    let default_catalog = &session_state.config().options().catalog.default_catalog;
-    let default_schema = &session_state.config().options().catalog.default_schema;
+    let catalog_list = session.catalog_list();
+    let default_catalog = &session.config_options().catalog.default_catalog;
+    let default_schema = &session.config_options().catalog.default_schema;
 
     let candidates = context.candidates();
     // Alignment-tolerant zipping: if a caller supplied metadata whose
@@ -383,37 +407,40 @@ pub(super) async fn refresh_candidate_readiness(
     let aligned = candidates.len() == physical_inputs.len();
 
     let refreshed: Vec<CandidateMetadata> =
-        futures::future::join_all(candidates.iter().enumerate().map(|(idx, c)| async move {
-            match c {
-                CandidateMetadata::Base => CandidateMetadata::Base,
-                CandidateMetadata::Materialized {
-                    table_ref,
-                    readiness,
-                } => {
-                    // Prefer atomically-captured readiness from the physical
-                    // input over sampling — closes the race between the
-                    // snapshot scan read from and the current provider state.
-                    let annotated = if aligned {
-                        readiness_from_plan(&physical_inputs[idx])
-                    } else {
-                        None
-                    };
-
-                    let new_readiness = match annotated {
-                        Some(r) => r,
-                        None => resolve_current_readiness(
-                            catalog_list.as_ref(),
-                            default_catalog,
-                            default_schema,
-                            table_ref,
-                        )
-                        .await
-                        .unwrap_or(*readiness),
-                    };
-
+        futures::future::join_all(candidates.iter().enumerate().map(|(idx, c)| {
+            let catalog_list = Arc::clone(&catalog_list);
+            async move {
+                match c {
+                    CandidateMetadata::Base => CandidateMetadata::Base,
                     CandidateMetadata::Materialized {
-                        table_ref: table_ref.clone(),
-                        readiness: new_readiness,
+                        table_ref,
+                        readiness,
+                    } => {
+                        // Prefer atomically-captured readiness from the physical
+                        // input over sampling — closes the race between the
+                        // snapshot scan read from and the current provider state.
+                        let annotated = if aligned {
+                            readiness_from_plan(&physical_inputs[idx])
+                        } else {
+                            None
+                        };
+
+                        let new_readiness = match annotated {
+                            Some(r) => r,
+                            None => resolve_current_readiness(
+                                catalog_list.as_ref(),
+                                default_catalog,
+                                default_schema,
+                                table_ref,
+                            )
+                            .await
+                            .unwrap_or(*readiness),
+                        };
+
+                        CandidateMetadata::Materialized {
+                            table_ref: table_ref.clone(),
+                            readiness: new_readiness,
+                        }
                     }
                 }
             }

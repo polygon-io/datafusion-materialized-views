@@ -25,27 +25,26 @@ authors = ["Matthew Cramerus <matt@polygon.io>"]
 license = "Apache-2.0"
 description = "Materialized Views & Query Rewriting in DataFusion"
 keywords = ["arrow", "arrow-rs", "datafusion"]
-rust-version = "1.88.0"
+rust-version = "1.94.0"
 
 [dependencies]
 aquamarine = "0.6.0"
-arrow = "58.3.0"
-arrow-schema = "58.3.0"
+arrow = "59.2.0"
+arrow-schema = "59.2.0"
 async-trait = "0.1.89"
 dashmap = "6"
-datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
-datafusion-sql = { git = "https://github.com/massive-com/arrow-datafusion", rev = "74b5d951aa6b129fba4518e6f388575005e16bc4" }
+datafusion = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-common = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-functions = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-functions-aggregate = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-optimizer = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-physical-expr = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
+datafusion-physical-plan = { git = "https://github.com/massive-com/arrow-datafusion", rev = "9bf6d740b9b864f467685716fa501496f5c64790" }
 futures = "0.3"
 itertools = "0.14"
 log = "0.4"
-object_store = "0.13.1"
+object_store = "0.13.2"
 ordered-float = "5.0.0"
 parking_lot = "0.12"
 

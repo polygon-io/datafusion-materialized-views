@@ -25,17 +25,19 @@ use datafusion::catalog::{CatalogProvider, Session};
 use datafusion::datasource::listing::ListingTableUrl;
 use datafusion::datasource::TableProvider;
 use datafusion::execution::object_store::ObjectStoreUrl;
-use datafusion::physical_expr::{create_physical_expr, EquivalenceProperties};
+use datafusion::physical_expr::EquivalenceProperties;
 use datafusion::physical_plan::expressions::{BinaryExpr, Column, Literal};
 use datafusion::physical_plan::limit::LimitStream;
 use datafusion::physical_plan::metrics::{BaselineMetrics, ExecutionPlanMetricsSet, MetricsSet};
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PhysicalExpr, PlanProperties,
+    apply_expression_roots, ChildrenPropertiesMode, DisplayAs, DisplayFormatType, ExecutionPlan,
+    Partitioning, PhysicalExpr, PlanProperties, ReplaceChildrenOptions,
 };
 use datafusion::{
     catalog::CatalogProviderList, execution::TaskContext, physical_plan::SendableRecordBatchStream,
 };
+use datafusion_common::tree_node::TreeNodeRecursion;
 use datafusion_common::{DFSchema, DataFusionError, Result, ScalarValue};
 use datafusion_expr::{Expr, Operator, TableProviderFilterPushDown, TableType};
 use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
@@ -104,7 +106,8 @@ impl TableProvider for FileMetadata {
         let filters = filters
             .iter()
             .map(|expr| {
-                create_physical_expr(expr, &dfschema, session_state.execution_props())
+                session_state
+                    .create_physical_expr(expr.clone(), &dfschema)
                     .map_err(|e| e.context("failed to create file metadata physical expr"))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -191,11 +194,35 @@ impl ExecutionPlan for FileMetadataExec {
         vec![]
     }
 
+    fn apply_expressions(
+        &self,
+        f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> Result<TreeNodeRecursion>,
+    ) -> Result<TreeNodeRecursion> {
+        apply_expression_roots(self.filters.iter(), f)
+    }
+
+    fn replace_children(
+        self: Arc<Self>,
+        children: Vec<Arc<dyn ExecutionPlan>>,
+        _options: ReplaceChildrenOptions,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        if !children.is_empty() {
+            return Err(DataFusionError::Plan(format!(
+                "FileMetadataExec expects no children, got {}",
+                children.len()
+            )));
+        }
+        Ok(self)
+    }
+
     fn with_new_children(
         self: Arc<Self>,
-        _children: Vec<Arc<dyn ExecutionPlan>>,
+        children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        Ok(self)
+        self.replace_children(
+            children,
+            ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
+        )
     }
 
     fn execute(
