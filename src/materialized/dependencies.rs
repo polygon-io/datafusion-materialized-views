@@ -48,13 +48,13 @@ use datafusion_common::{
     alias::AliasGenerator,
     internal_err,
     tree_node::{Transformed, TreeNode},
-    Column as DFColumn, DFSchema, DataFusionError, Result, ScalarValue,
+    Column as DFColumn, DFSchema, DataFusionError, Result, ScalarValue, TableReference,
 };
 use datafusion_expr::{
     col, lit, utils::split_conjunction, Expr, LogicalPlan, LogicalPlanBuilder, TableScan,
+    TableScanBuilder,
 };
 use datafusion_functions::string::expr_fn::{concat, concat_ws};
-use datafusion_sql::TableReference;
 use itertools::{Either, Itertools};
 use std::{collections::HashSet, sync::Arc};
 
@@ -654,14 +654,12 @@ fn pushdown_projection_inexact(plan: LogicalPlan, indices: &HashSet<usize>) -> R
                 }));
             }
 
-            TableScan::try_new(
-                scan.table_name,
-                scan.source,
-                Some(new_projection),
-                filters,
-                None,
-            )
-            .map(LogicalPlan::TableScan)
+            TableScanBuilder::from(scan)
+                .with_projection(Some(new_projection))
+                .with_filters(filters)
+                .with_fetch(None)
+                .build()
+                .map(LogicalPlan::TableScan)
         }
         LogicalPlan::EmptyRelation(EmptyRelation {
             produce_one_row,
@@ -1066,18 +1064,11 @@ fn get_source_files_all_partitions(
                 );
 
                 let row_metadata = row_metadata_registry.get_source(&resolved_ref)?;
+                let source_scan = TableScanBuilder::new(table_ref.clone(), source)
+                    .with_projection(Some(vec![]))
+                    .build()?;
                 let row_metadata_scan = row_metadata
-                    .row_metadata(
-                        resolved_ref,
-                        &TableScan {
-                            table_name: table_ref.clone(),
-                            source,
-                            projection: Some(vec![]), // no columns relevant
-                            projected_schema: Arc::new(DFSchema::empty()),
-                            filters: vec![],
-                            fetch: None,
-                        },
-                    )?
+                    .row_metadata(resolved_ref, &source_scan)?
                     .build()?;
 
                 if let Some(previous) = maybe_plan {

@@ -33,7 +33,8 @@ use datafusion::{
     prelude::{SessionConfig, SessionContext},
 };
 use datafusion_common::{
-    metadata::ScalarAndMetadata, Constraints, DataFusionError, ParamValues, ScalarValue, Statistics,
+    metadata::ScalarAndMetadata, Constraints, DataFusionError, ParamValues, ScalarValue,
+    Statistics, TableReference,
 };
 use datafusion_expr::{
     col, dml::InsertOp, Expr, JoinType, LogicalPlan, LogicalPlanBuilder, SortExpr,
@@ -47,7 +48,6 @@ use datafusion_materialized_views::materialized::{
     ListingTableLike, Materialized,
 };
 use datafusion_physical_plan::{collect, ExecutionPlan};
-use datafusion_sql::TableReference;
 use futures::{StreamExt, TryStreamExt};
 use itertools::{Either, Itertools};
 use object_store::local::LocalFileSystem;
@@ -69,8 +69,6 @@ struct MaterializedListingOptions {
     file_extension: String,
     format: Arc<dyn FileFormat>,
     table_partition_cols: Vec<String>,
-    collect_stat: bool,
-    target_partitions: usize,
     file_sort_order: Vec<Vec<SortExpr>>,
 }
 
@@ -138,7 +136,9 @@ async fn setup() -> Result<TestContext> {
         .expect("should replace existing object store at file://");
 
     let ctx = SessionContext::new_with_config_rt(
-        SessionConfig::new(),
+        SessionConfig::new()
+            .with_collect_statistics(false)
+            .with_target_partitions(1),
         RuntimeEnvBuilder::new()
             .with_object_store_registry(registry)
             .build_arc()
@@ -228,8 +228,6 @@ async fn test_materialized_listing_table_incremental_maintenance() -> Result<()>
                 file_extension: ".parquet".to_string(),
                 format: Arc::<ParquetFormat>::default(),
                 table_partition_cols: vec!["year".into()],
-                collect_stat: false,
-                target_partitions: 1,
                 file_sort_order: vec![vec![SortExpr {
                     expr: col("count"),
                     asc: true,
@@ -349,9 +347,8 @@ impl MaterializedListingTable {
             file_extension: opts.file_extension,
             format: opts.format,
             table_partition_cols,
-            collect_stat: opts.collect_stat,
-            target_partitions: opts.target_partitions,
             file_sort_order: opts.file_sort_order,
+            output_partitioning: None,
         });
 
         let mut listing_table_config = ListingTableConfig::new(config.table_path);

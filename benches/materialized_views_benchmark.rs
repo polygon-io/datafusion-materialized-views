@@ -22,10 +22,9 @@ use std::time::Duration;
 use datafusion::datasource::provider_as_source;
 use datafusion::datasource::TableProvider;
 use datafusion::prelude::SessionContext;
-use datafusion_common::Result as DfResult;
+use datafusion_common::{Result as DfResult, TableReference};
 use datafusion_expr::LogicalPlan;
 use datafusion_materialized_views::rewrite::normal_form::SpjNormalForm;
-use datafusion_sql::TableReference;
 use tokio::runtime::Builder;
 
 // Utility: generate CREATE TABLE SQL with n columns named c0..c{n-1}

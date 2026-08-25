@@ -1163,8 +1163,7 @@ mod test {
         datasource::provider_as_source,
         prelude::{SessionConfig, SessionContext},
     };
-    use datafusion_common::{DataFusionError, Result};
-    use datafusion_sql::TableReference;
+    use datafusion_common::{DataFusionError, Result, TableReference};
     use tempfile::tempdir;
 
     use super::SpjNormalForm;
