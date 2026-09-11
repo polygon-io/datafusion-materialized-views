@@ -15,8 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "datafusion-materialized-views"
+[workspace]
+resolver = "2"
+members = ["datafusion-materialized-views", "datafusion-materialized-views-common"]
+
+[workspace.package]
 version = "0.2.0"
 edition = "2021"
 homepage = "https://github.com/datafusion-contrib/datafusion-materialized-views"
@@ -27,7 +30,9 @@ description = "Materialized Views & Query Rewriting in DataFusion"
 keywords = ["arrow", "arrow-rs", "datafusion"]
 rust-version = "1.94.0"
 
-[dependencies]
+[workspace.dependencies]
+datafusion-materialized-views-common = { path = "datafusion-materialized-views-common" }
+
 aquamarine = "0.6.0"
 arrow = "59.2.0"
 arrow-schema = "59.2.0"
@@ -48,15 +53,9 @@ object_store = "0.13.2"
 ordered-float = "5.0.0"
 parking_lot = "0.12"
 
-[dev-dependencies]
 anyhow = "1.0.95"
 criterion = "0.4"
 env_logger = "0.11.6"
 tempfile = "3.14.0"
 tokio = "1.42.0"
 url = "2.5.4"
-
-[[bench]]
-name = "materialized_views_benchmark"
-harness = false
-path = "benches/materialized_views_benchmark.rs"

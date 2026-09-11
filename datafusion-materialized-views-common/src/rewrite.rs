@@ -15,15 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use datafusion::{common::extensions_options, config::ConfigExtension};
-
-pub mod exploitation;
-
-pub mod normal_form;
-
-pub mod readiness;
-
-mod util;
+use datafusion_common::{config::ConfigExtension, extensions_options};
 
 extensions_options! {
     /// Options for the query rewriting optimizer
